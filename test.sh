@@ -16,6 +16,7 @@ test() {
     fi
 }
 
-test 0 0
-test 42 42
+test 3 "3"
+test 8 "1 + 3 + 4"
+test 7 "1 + 10 - 4"
 echo OK
