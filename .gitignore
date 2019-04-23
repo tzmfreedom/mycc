@@ -1,0 +1,5 @@
+.idea
+*.s
+tmp
+tmp.s
+mycc
