@@ -28,17 +28,22 @@ func (l *Lexer) Tokenize(str string) []*Token {
 		r := l.Runes[l.Index]
 		var token *Token
 		switch r {
-		case '+':
+		case rune('+'):
 			token = l.createToken("add", string(r))
-		case '-':
+		case rune('-'):
 			token = l.createToken("sub", string(r))
-		case '*':
+		case rune('*'):
 			token = l.createToken("mul", string(r))
-		case '/':
+		case rune('/'):
 			token = l.createToken("div", string(r))
-		case '\n':
+		case rune('('):
+			token = l.createToken("(", string(r))
+		case rune(')'):
+			token = l.createToken(")", string(r))
+		case rune('\n'):
 			l.Column = 0
 			l.Line++
+			continue
 		case ' ', '　':
 			l.Index++
 			l.Column++
@@ -65,17 +70,19 @@ func (l *Lexer) createToken(t string, v string) *Token {
 }
 
 func (l *Lexer) parseNumber() *Token {
-	runes := []rune{l.Runes[l.Index]}
+	runes := []rune{}
 	for {
-		l.Index++
-		l.Column++
-		if len(l.Runes) <= l.Index {
-			break
-		}
 		r := l.Runes[l.Index]
 		if r >= '0' && r <= '9' {
 			runes = append(runes, r)
 		} else {
+			l.Index--
+			l.Column--
+			break
+		}
+		l.Index++
+		l.Column++
+		if len(l.Runes) <= l.Index {
 			break
 		}
 	}

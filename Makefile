@@ -8,6 +8,6 @@ run:
 main: main.s
 	gcc -o main main.s
 
-mycc: main.go
+mycc:
 	gofmt -w .
 	go build -o mycc .

@@ -1,5 +1,12 @@
 package main
 
+type Node struct {
+	Type  string
+	Value string
+	Left  *Node
+	Right *Node
+}
+
 type Parser struct {
 	Index  int
 	Tokens []*Token
@@ -69,22 +76,17 @@ func (p *Parser) mul() *Node {
 
 func (p *Parser) term() *Node {
 	token := p.consume("number")
+	if next := p.consume("("); next != nil {
+		node := p.add()
+		if next := p.consume(")"); next != nil {
+			return node
+		}
+	}
 	if token != nil {
 		return &Node{
 			Type:  "number",
 			Value: token.Value,
 		}
 	}
-	panic("not number: " + p.peek().Type)
-}
-
-func (p *Parser) peek() *Token {
-	return p.Tokens[p.Index+1]
-}
-
-type Node struct {
-	Type  string
-	Value string
-	Left  *Node
-	Right *Node
+	panic("not number: " + p.current().Type)
 }

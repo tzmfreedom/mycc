@@ -27,30 +27,14 @@ func parse(str string) {
 	tokens := l.Tokenize(str)
 	p := NewParser(tokens)
 	tree := p.Parse()
-	traverse(tree)
-	//for _, token := range tokens {
-	//	switch token.Type {
-	//	case "add":
-	//		prev = "+"
-	//	case "sub":
-	//		prev = "-"
-	//	default:
-	//		if prev == "+" {
-	//			fmt.Printf("    add rax, %s\n", token)
-	//		} else if prev == "-" {
-	//			fmt.Printf("    sub rax, %s\n", token)
-	//		} else {
-	//			fmt.Printf("    mov rax, %s\n", token)
-	//		}
-	//	}
-	//}
+	generate(tree)
 }
 
-func traverse(n *Node) {
+func generate(n *Node) {
 	switch n.Type {
 	case "add", "sub", "mul", "div":
-		traverse(n.Left)
-		traverse(n.Right)
+		generate(n.Left)
+		generate(n.Right)
 		fmt.Printf("    pop rdi\n")
 		fmt.Printf("    pop rax\n")
 		if n.Type == "div" {
