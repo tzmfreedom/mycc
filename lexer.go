@@ -15,7 +15,7 @@ func NewLexer(str string) *Lexer {
 		Runes:    runes,
 		Index:    0,
 		Line:     1,
-		Column:   0,
+		Column:   1,
 	}
 }
 
@@ -41,7 +41,7 @@ func (l *Lexer) Tokenize(str string) []*Token {
 		case rune(')'):
 			token = l.createToken(")", string(r))
 		case rune('\n'):
-			l.Column = 0
+			l.Column = 1
 			l.Line++
 			continue
 		case ' ', '　':

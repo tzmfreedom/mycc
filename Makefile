@@ -1,3 +1,5 @@
+SOURCES  = $(wildcard *.go)
+
 .PHONY: test
 test: mycc
 	./test.sh
@@ -8,6 +10,6 @@ run:
 main: main.s
 	gcc -o main main.s
 
-mycc:
+mycc: $(SOURCES)
 	gofmt -w .
 	go build -o mycc .
