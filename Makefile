@@ -10,4 +10,4 @@ main: main.s
 
 mycc: main.go
 	gofmt -w .
-	go build -o mycc main.go
+	go build -o mycc .
