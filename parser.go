@@ -1,7 +1,7 @@
 package main
 
 type Node struct {
-	Type  string
+	Type  int
 	Value string
 	Left  *Node
 	Right *Node
@@ -16,15 +16,15 @@ func NewParser(tokens []*Token) *Parser {
 	return &Parser{Index: 0, Tokens: tokens}
 }
 
-func (p *Parser) Parse() *Node {
-	return p.add()
+func (p *Parser) Parse() []*Node {
+	return p.statements()
 }
 
 func (p *Parser) current() *Token {
 	return p.Tokens[p.Index]
 }
 
-func (p *Parser) consume(t string) *Token {
+func (p *Parser) consume(t int) *Token {
 	if len(p.Tokens) <= p.Index {
 		return nil
 	}
@@ -36,16 +36,81 @@ func (p *Parser) consume(t string) *Token {
 	return nil
 }
 
+func (p *Parser) statements() []*Node {
+	statements := []*Node{}
+	for {
+		statement := p.statement()
+		if statement == nil {
+			break
+		}
+		statements = append(statements, statement)
+	}
+	return statements
+}
+
+func (p *Parser) statement() *Node {
+	return p.expressionStatement()
+}
+
+func (p *Parser) expressionStatement() *Node {
+	exp := p.assignExpression()
+	if colon := p.consume(';'); colon == nil {
+		return nil
+	}
+	return exp
+}
+
+func (p *Parser) expression() *Node {
+	if exp := p.add(); exp != nil {
+		return exp
+	}
+	if assign := p.assignExpression(); assign != nil {
+		return assign
+	}
+	return nil
+}
+
+func (p *Parser) assignExpression() *Node {
+	ident := p.identifier()
+	if ident == nil {
+		return nil
+	}
+	token := p.consume('=')
+	if token == nil {
+		return nil
+	}
+	exp := p.expression()
+	if exp == nil {
+		return nil
+	}
+	return &Node{
+		Type:  token.Type,
+		Left:  ident,
+		Right: exp,
+	}
+}
+
+func (p *Parser) identifier() *Node {
+	token := p.consume(TK_IDENT)
+	if token == nil {
+		return nil
+	}
+	return &Node{
+		Type:  token.Type,
+		Value: token.Value,
+	}
+}
+
 func (p *Parser) add() *Node {
 	node := p.mul()
-	if next := p.consume("add"); next != nil {
+	if next := p.consume('+'); next != nil {
 		return &Node{
 			Type:  next.Type,
 			Left:  node,
 			Right: p.add(),
 		}
 	}
-	if next := p.consume("sub"); next != nil {
+	if next := p.consume('-'); next != nil {
 		return &Node{
 			Type:  next.Type,
 			Left:  node,
@@ -57,14 +122,14 @@ func (p *Parser) add() *Node {
 
 func (p *Parser) mul() *Node {
 	node := p.term()
-	if next := p.consume("mul"); next != nil {
+	if next := p.consume('*'); next != nil {
 		return &Node{
 			Type:  next.Type,
 			Left:  node,
 			Right: p.mul(),
 		}
 	}
-	if next := p.consume("div"); next != nil {
+	if next := p.consume('-'); next != nil {
 		return &Node{
 			Type:  next.Type,
 			Left:  node,
@@ -75,18 +140,18 @@ func (p *Parser) mul() *Node {
 }
 
 func (p *Parser) term() *Node {
-	token := p.consume("number")
-	if next := p.consume("("); next != nil {
-		node := p.add()
-		if next := p.consume(")"); next != nil {
+	if next := p.consume('('); next != nil {
+		node := p.expression()
+		if next := p.consume(')'); next != nil {
 			return node
 		}
 	}
-	if token != nil {
+
+	if token := p.consume(TK_NUMBER); token != nil {
 		return &Node{
-			Type:  "number",
+			Type:  TK_NUMBER,
 			Value: token.Value,
 		}
 	}
-	panic("not number: " + p.current().Type)
+	return nil
 }

@@ -1,5 +1,18 @@
 package main
 
+const (
+	TK_NUMBER = iota + 256
+	TK_IDENT
+	TK_EOF
+)
+
+type Token struct {
+	Type   int
+	Value  string
+	Line   int
+	Column int
+}
+
 type Lexer struct {
 	Original string
 	Runes    []rune
@@ -28,19 +41,11 @@ func (l *Lexer) Tokenize(str string) []*Token {
 		r := l.Runes[l.Index]
 		var token *Token
 		switch r {
-		case rune('+'):
-			token = l.createToken("add", string(r))
-		case rune('-'):
-			token = l.createToken("sub", string(r))
-		case rune('*'):
-			token = l.createToken("mul", string(r))
-		case rune('/'):
-			token = l.createToken("div", string(r))
-		case rune('('):
-			token = l.createToken("(", string(r))
-		case rune(')'):
-			token = l.createToken(")", string(r))
-		case rune('\n'):
+		case '+', '-', '*', '/', '(', ')', '=', ';':
+			token = l.createToken(int(r), string(r))
+			l.Index++
+			l.Column++
+		case '\n':
 			l.Column = 1
 			l.Line++
 			continue
@@ -49,18 +54,18 @@ func (l *Lexer) Tokenize(str string) []*Token {
 			l.Column++
 			continue
 		default:
-			if r >= '0' && r <= '9' {
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+				token = l.parseIdentifier()
+			} else if r >= '0' && r <= '9' {
 				token = l.parseNumber()
 			}
 		}
 		tokens = append(tokens, token)
-		l.Index++
-		l.Column++
 	}
 	return tokens
 }
 
-func (l *Lexer) createToken(t string, v string) *Token {
+func (l *Lexer) createToken(t int, v string) *Token {
 	return &Token{
 		Type:   t,
 		Value:  v,
@@ -76,8 +81,6 @@ func (l *Lexer) parseNumber() *Token {
 		if r >= '0' && r <= '9' {
 			runes = append(runes, r)
 		} else {
-			l.Index--
-			l.Column--
 			break
 		}
 		l.Index++
@@ -86,5 +89,23 @@ func (l *Lexer) parseNumber() *Token {
 			break
 		}
 	}
-	return l.createToken("number", string(runes))
+	return l.createToken(TK_NUMBER, string(runes))
+}
+
+func (l *Lexer) parseIdentifier() *Token {
+	runes := []rune{}
+	for {
+		r := l.Runes[l.Index]
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9' && len(runes) > 0) {
+			runes = append(runes, r)
+		} else {
+			break
+		}
+		l.Index++
+		l.Column++
+		if len(l.Runes) <= l.Index {
+			break
+		}
+	}
+	return l.createToken(TK_IDENT, string(runes))
 }
