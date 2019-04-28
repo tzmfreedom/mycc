@@ -151,7 +151,7 @@ func (p *Parser) add() *Node {
 }
 
 func (p *Parser) mul() *Node {
-	node := p.term()
+	node := p.unary()
 	if next := p.consume('*'); next != nil {
 		return &Node{
 			Type:  next.Type,
@@ -167,6 +167,25 @@ func (p *Parser) mul() *Node {
 		}
 	}
 	return node
+}
+
+func (p *Parser) unary() *Node {
+	if token := p.consume('+'); token != nil {
+		return p.term()
+	}
+	if token := p.consume('-'); token != nil {
+		if term := p.term(); term != nil {
+			return &Node{
+				Type: '-',
+				Left: &Node{
+					Type:  TK_NUMBER,
+					Value: "0",
+				},
+				Right: term,
+			}
+		}
+	}
+	return p.term()
 }
 
 func (p *Parser) term() *Node {

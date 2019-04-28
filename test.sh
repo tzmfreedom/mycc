@@ -29,4 +29,7 @@ test 3 "a = 1; b = 3;"
 test 1 "a = 1; b = 3; return 1;"
 test 23 "a = 3 + 10 * 2; b = 3; return a;"
 test 3 "a = 3 + 10 * 2; b = 3; return b;"
+test 8 "a = 10 + 1 * -2;"
+test 12 "a = 10 - 1 * -2;"
+test 9 "a = -1 + 10;"
 echo OK
