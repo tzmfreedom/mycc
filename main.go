@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/k0kubun/pp"
 	"os"
 )
 
@@ -12,8 +11,8 @@ func main() {
 .global _main
 _main:`)
 	parse(os.Args[1])
-	fmt.Println("    pop rax")
-	fmt.Println("    ret")
+	//fmt.Println("    pop rax")
+	//fmt.Println("    ret")
 }
 
 func parse(str string) {
@@ -21,13 +20,21 @@ func parse(str string) {
 	tokens := l.Tokenize(str)
 	p := NewParser(tokens)
 	nodes := p.Parse()
-	g := &Generator{}
+	g := NewGenerator()
 	g.generate(nodes)
-	pp.Println(nodes)
+	// pp.Println(nodes)
 }
 
-type Generator struct{
+const MemorySize = 8
+
+type Generator struct {
 	Variables map[string]int
+}
+
+func NewGenerator() *Generator {
+	return &Generator{
+		Variables: map[string]int{},
+	}
 }
 
 func (g *Generator) checkVariable(n *Node) {
@@ -44,15 +51,13 @@ func (g *Generator) generate(nodes []*Node) {
 	for _, n := range nodes {
 		g.checkVariable(n)
 	}
-	if len(g.Variables) > 0 {
-		fmt.Printf("    push rbp\n")
-		fmt.Printf("    mov rbp, rsp\n")
-		fmt.Printf("    add rsp, %d\n", len(g.Variables) * 8)
-	}
+	fmt.Printf("    push rbp\n")
+	fmt.Printf("    mov rbp, rsp\n")
+	fmt.Printf("    sub rsp, %d\n", len(g.Variables)*MemorySize)
 	for _, n := range nodes {
 		g.gen(n)
+		fmt.Printf("    pop rax\n")
 	}
-	fmt.Printf("    pop rax\n")
 	fmt.Printf("    mov rsp, rbp\n")
 	fmt.Printf("    pop rbp\n")
 	fmt.Printf("    ret\n")
@@ -70,12 +75,37 @@ func (g *Generator) gen(n *Node) {
 			fmt.Printf("    div rdi\n")
 		} else if n.Type == '*' {
 			fmt.Printf("    mul rdi\n")
+		} else if n.Type == '+' {
+			fmt.Printf("    add rax, rdi\n")
+		} else if n.Type == '-' {
+			fmt.Printf("    sub rax, rdi\n")
 		} else {
-			fmt.Printf("    %s rax, rdi\n", n.Type)
+			fmt.Printf("    %s rax, rdi\n", string(rune(n.Type)))
 		}
 		fmt.Printf("    push rax\n")
 	case '=':
+		index := g.Variables[n.Left.Value]
+		fmt.Printf("    mov rax, rbp\n")
+		fmt.Printf("    sub rax, %d\n", index*MemorySize)
 		fmt.Printf("    push rax\n")
+		g.gen(n.Right)
+		fmt.Printf("    pop rdi\n")
+		fmt.Printf("    pop rax\n")
+		fmt.Printf("    mov [rax], rdi\n")
+		fmt.Printf("    push rdi\n")
+	case ND_NUMBER:
+		fmt.Printf("    push %s\n", n.Value)
+	case ND_IDENT:
+		index := g.Variables[n.Value]
+		fmt.Printf("    mov rax, rbp\n")
+		fmt.Printf("    sub rax, %d\n", index*MemorySize)
+		fmt.Printf("    push [rax]\n")
+	case ND_RETURN:
+		g.gen(n.Left)
+		fmt.Printf("    pop rax\n")
+		fmt.Printf("    mov rsp, rbp\n")
+		fmt.Printf("    pop rbp\n")
+		fmt.Printf("    ret\n")
 	default:
 		fmt.Printf("    push %s\n", n.Value)
 	}

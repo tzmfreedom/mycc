@@ -4,7 +4,12 @@ const (
 	TK_NUMBER = iota + 256
 	TK_IDENT
 	TK_EOF
+	TK_RETURN
 )
+
+var reservationTypes = map[string]int{
+	"return": TK_RETURN,
+}
 
 type Token struct {
 	Type   int
@@ -107,5 +112,9 @@ func (l *Lexer) parseIdentifier() *Token {
 			break
 		}
 	}
-	return l.createToken(TK_IDENT, string(runes))
+	ident := string(runes)
+	if v, ok := reservationTypes[ident]; ok {
+		return l.createToken(v, ident)
+	}
+	return l.createToken(TK_IDENT, ident)
 }

@@ -1,5 +1,11 @@
 package main
 
+const (
+	ND_NUMBER = iota + 256
+	ND_IDENT
+	ND_RETURN
+)
+
 type Node struct {
 	Type  int
 	Value string
@@ -49,7 +55,31 @@ func (p *Parser) statements() []*Node {
 }
 
 func (p *Parser) statement() *Node {
-	return p.expressionStatement()
+	if stmt := p.expressionStatement(); stmt != nil {
+		return stmt
+	}
+
+	if stmt := p.returnStatement(); stmt != nil {
+		return stmt
+	}
+	return nil
+}
+
+func (p *Parser) returnStatement() *Node {
+	if ret := p.consume(TK_RETURN); ret == nil {
+		return nil
+	}
+	exp := p.expression()
+	if exp == nil {
+		return nil
+	}
+	if colon := p.consume(';'); colon == nil {
+		return nil
+	}
+	return &Node{
+		Type: ND_RETURN,
+		Left: exp,
+	}
 }
 
 func (p *Parser) expressionStatement() *Node {
@@ -96,7 +126,7 @@ func (p *Parser) identifier() *Node {
 		return nil
 	}
 	return &Node{
-		Type:  token.Type,
+		Type:  ND_IDENT,
 		Value: token.Value,
 	}
 }
@@ -149,8 +179,14 @@ func (p *Parser) term() *Node {
 
 	if token := p.consume(TK_NUMBER); token != nil {
 		return &Node{
-			Type:  TK_NUMBER,
+			Type:  ND_NUMBER,
 			Value: token.Value,
+		}
+	}
+	if ident := p.consume(TK_IDENT); ident != nil {
+		return &Node{
+			Type:  ND_IDENT,
+			Value: ident.Value,
 		}
 	}
 	return nil
