@@ -15,6 +15,10 @@ mycc: $(SOURCES)
 	go build -o mycc .
 
 test/run: mycc
-	./mycc "$(CODE)" > tmp/tmp.s
+	echo "$(CODE)" > tmp/tmp.c
+	./mycc tmp/tmp.c > tmp/tmp.s
 	gcc -o tmp/tmp tmp/tmp.s
 	./tmp/tmp
+
+tmp/hoge.o: tmp/hoge.c
+	gcc -c tmp/hoge.c -o tmp/hoge.o

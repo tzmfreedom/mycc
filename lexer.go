@@ -5,6 +5,8 @@ const (
 	TK_IDENT
 	TK_EOF
 	TK_RETURN
+	TK_EQUAL
+	TK_NOTEQUAL
 )
 
 var reservationTypes = map[string]int{
@@ -43,15 +45,30 @@ func (l *Lexer) Tokenize(str string) []*Token {
 		if l.Index >= len(l.Runes) {
 			break
 		}
-		r := l.Runes[l.Index]
+		r := l.current()
 		var token *Token
 		switch r {
-		case '+', '-', '*', '/', '(', ')', '=', ';':
+		case '+', '-', '*', '/', '(', ')', ';', ',', '{', '}':
 			token = l.createToken(int(r), string(r))
+			l.Index++
+			l.Column++
+		case '!', '=':
+			if l.peek() == '=' {
+				if l.current() == '!' {
+					token = l.createToken(TK_NOTEQUAL, string(r))
+				} else {
+					token = l.createToken(TK_EQUAL, string(r))
+				}
+				l.Index++
+				l.Column++
+			} else {
+				token = l.createToken(int(r), string(r))
+			}
 			l.Index++
 			l.Column++
 		case '\n':
 			l.Column = 1
+			l.Index++
 			l.Line++
 			continue
 		case ' ', '　':
@@ -63,6 +80,8 @@ func (l *Lexer) Tokenize(str string) []*Token {
 				token = l.parseIdentifier()
 			} else if r >= '0' && r <= '9' {
 				token = l.parseNumber()
+			} else {
+				panic("no expected token: " + string(r))
 			}
 		}
 		tokens = append(tokens, token)
@@ -117,4 +136,15 @@ func (l *Lexer) parseIdentifier() *Token {
 		return l.createToken(v, ident)
 	}
 	return l.createToken(TK_IDENT, ident)
+}
+
+func (l *Lexer) current() rune {
+	return l.Runes[l.Index]
+}
+
+func (l *Lexer) peek() rune {
+	if len(l.Runes) <= l.Index {
+		return 0
+	}
+	return l.Runes[l.Index+1]
 }

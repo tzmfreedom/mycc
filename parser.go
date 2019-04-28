@@ -1,17 +1,6 @@
 package main
 
-const (
-	ND_NUMBER = iota + 256
-	ND_IDENT
-	ND_RETURN
-)
-
-type Node struct {
-	Type  int
-	Value string
-	Left  *Node
-	Right *Node
-}
+import "strconv"
 
 type Parser struct {
 	Index  int
@@ -22,8 +11,8 @@ func NewParser(tokens []*Token) *Parser {
 	return &Parser{Index: 0, Tokens: tokens}
 }
 
-func (p *Parser) Parse() []*Node {
-	return p.statements()
+func (p *Parser) Parse() []Node {
+	return p.declarations()
 }
 
 func (p *Parser) current() *Token {
@@ -42,8 +31,73 @@ func (p *Parser) consume(t int) *Token {
 	return nil
 }
 
-func (p *Parser) statements() []*Node {
-	statements := []*Node{}
+func (p *Parser) declarations() []Node {
+	declarations := []Node{}
+	for {
+		declaration := p.declaration()
+		if declaration == nil {
+			break
+		}
+		declarations = append(declarations, declaration)
+	}
+	return declarations
+}
+
+func (p *Parser) declaration() Node {
+	ident := p.identifier()
+	if t := p.consume('('); t == nil {
+		return nil
+	}
+	params := p.parameters()
+	if t := p.consume(')'); t == nil {
+		return nil
+	}
+	if t := p.consume('{'); t == nil {
+		return nil
+	}
+	statements := p.statements()
+	if t := p.consume('}'); t == nil {
+		return nil
+	}
+	return &FunctionNode{
+		Identifier: ident.Value,
+		Parameters: params,
+		Statements: statements,
+	}
+}
+
+func (p *Parser) parameters() []*Parameter {
+	parameters := []*Parameter{}
+	for {
+		parameter := p.parameter()
+		if parameter == nil {
+			break
+		}
+		parameters = append(parameters, parameter)
+		if token := p.consume(','); token == nil {
+			break
+		}
+	}
+	return parameters
+}
+
+func (p *Parser) parameter() *Parameter {
+	typeNode := p.identifier()
+	if typeNode == nil {
+		return nil
+	}
+	ident := p.identifier()
+	if ident == nil {
+		return nil
+	}
+	return &Parameter{
+		Type:       typeNode.Value,
+		Identifier: ident.Value,
+	}
+}
+
+func (p *Parser) statements() []Node {
+	statements := []Node{}
 	for {
 		statement := p.statement()
 		if statement == nil {
@@ -54,7 +108,7 @@ func (p *Parser) statements() []*Node {
 	return statements
 }
 
-func (p *Parser) statement() *Node {
+func (p *Parser) statement() Node {
 	if stmt := p.expressionStatement(); stmt != nil {
 		return stmt
 	}
@@ -65,7 +119,7 @@ func (p *Parser) statement() *Node {
 	return nil
 }
 
-func (p *Parser) returnStatement() *Node {
+func (p *Parser) returnStatement() *ReturnNode {
 	if ret := p.consume(TK_RETURN); ret == nil {
 		return nil
 	}
@@ -76,13 +130,12 @@ func (p *Parser) returnStatement() *Node {
 	if colon := p.consume(';'); colon == nil {
 		return nil
 	}
-	return &Node{
-		Type: ND_RETURN,
-		Left: exp,
+	return &ReturnNode{
+		Expression: exp,
 	}
 }
 
-func (p *Parser) expressionStatement() *Node {
+func (p *Parser) expressionStatement() Node {
 	exp := p.assignExpression()
 	if colon := p.consume(';'); colon == nil {
 		return nil
@@ -90,17 +143,17 @@ func (p *Parser) expressionStatement() *Node {
 	return exp
 }
 
-func (p *Parser) expression() *Node {
-	if exp := p.add(); exp != nil {
+func (p *Parser) expression() Node {
+	if exp := p.try(p.add); exp != nil {
 		return exp
 	}
-	if assign := p.assignExpression(); assign != nil {
+	if assign := p.try(p.assignExpression); assign != nil {
 		return assign
 	}
 	return nil
 }
 
-func (p *Parser) assignExpression() *Node {
+func (p *Parser) assignExpression() Node {
 	ident := p.identifier()
 	if ident == nil {
 		return nil
@@ -113,35 +166,34 @@ func (p *Parser) assignExpression() *Node {
 	if exp == nil {
 		return nil
 	}
-	return &Node{
+	return &BinaryOperatorNode{
 		Type:  token.Type,
 		Left:  ident,
 		Right: exp,
 	}
 }
 
-func (p *Parser) identifier() *Node {
+func (p *Parser) identifier() *IdentifierNode {
 	token := p.consume(TK_IDENT)
 	if token == nil {
 		return nil
 	}
-	return &Node{
-		Type:  ND_IDENT,
+	return &IdentifierNode{
 		Value: token.Value,
 	}
 }
 
-func (p *Parser) add() *Node {
-	node := p.mul()
+func (p *Parser) add() Node {
+	node := p.booleanExpression()
 	if next := p.consume('+'); next != nil {
-		return &Node{
+		return &BinaryOperatorNode{
 			Type:  next.Type,
 			Left:  node,
 			Right: p.add(),
 		}
 	}
 	if next := p.consume('-'); next != nil {
-		return &Node{
+		return &BinaryOperatorNode{
 			Type:  next.Type,
 			Left:  node,
 			Right: p.add(),
@@ -150,17 +202,36 @@ func (p *Parser) add() *Node {
 	return node
 }
 
-func (p *Parser) mul() *Node {
+func (p *Parser) booleanExpression() Node {
+	node := p.mul()
+	if next := p.consume(TK_EQUAL); next != nil {
+		return &BinaryOperatorNode{
+			Type:  ND_EQUAL,
+			Left:  node,
+			Right: p.booleanExpression(),
+		}
+	}
+	if next := p.consume(TK_NOTEQUAL); next != nil {
+		return &BinaryOperatorNode{
+			Type:  ND_NOTEQUAL,
+			Left:  node,
+			Right: p.booleanExpression(),
+		}
+	}
+	return node
+}
+
+func (p *Parser) mul() Node {
 	node := p.unary()
 	if next := p.consume('*'); next != nil {
-		return &Node{
+		return &BinaryOperatorNode{
 			Type:  next.Type,
 			Left:  node,
 			Right: p.mul(),
 		}
 	}
 	if next := p.consume('-'); next != nil {
-		return &Node{
+		return &BinaryOperatorNode{
 			Type:  next.Type,
 			Left:  node,
 			Right: p.mul(),
@@ -169,44 +240,83 @@ func (p *Parser) mul() *Node {
 	return node
 }
 
-func (p *Parser) unary() *Node {
+func (p *Parser) unary() Node {
 	if token := p.consume('+'); token != nil {
-		return p.term()
+		return p.call()
 	}
 	if token := p.consume('-'); token != nil {
-		if term := p.term(); term != nil {
-			return &Node{
+		if term := p.call(); term != nil {
+			return &BinaryOperatorNode{
 				Type: '-',
-				Left: &Node{
-					Type:  TK_NUMBER,
-					Value: "0",
+				Left: &IntegerNode{
+					Value: 0,
 				},
 				Right: term,
 			}
 		}
 	}
+	return p.call()
+}
+
+func (p *Parser) call() Node {
+	current := p.Index
+	if ident := p.identifier(); ident != nil {
+		if token := p.consume('('); token != nil {
+			args := p.expressionList()
+			if token := p.consume(')'); token != nil {
+				return &CallNode{
+					Identifier: ident.Value,
+					Args:       args,
+				}
+			}
+		}
+	}
+	p.Index = current
 	return p.term()
 }
 
-func (p *Parser) term() *Node {
+func (p *Parser) term() Node {
 	if next := p.consume('('); next != nil {
 		node := p.expression()
 		if next := p.consume(')'); next != nil {
 			return node
 		}
 	}
-
 	if token := p.consume(TK_NUMBER); token != nil {
-		return &Node{
-			Type:  ND_NUMBER,
-			Value: token.Value,
+		num, _ := strconv.Atoi(token.Value)
+		return &IntegerNode{
+			Value: num,
 		}
 	}
 	if ident := p.consume(TK_IDENT); ident != nil {
-		return &Node{
-			Type:  ND_IDENT,
+		return &IdentifierNode{
 			Value: ident.Value,
 		}
 	}
 	return nil
+}
+
+func (p *Parser) try(f func() Node) Node {
+	current := p.Index
+	ret := f()
+	if ret == nil {
+		p.Index = current
+		return nil
+	}
+	return ret
+}
+
+func (p *Parser) expressionList() []Node {
+	expressionList := []Node{}
+	for {
+		exp := p.expression()
+		if exp == nil {
+			break
+		}
+		expressionList = append(expressionList, exp)
+		if token := p.consume(','); token == nil {
+			break
+		}
+	}
+	return expressionList
 }
