@@ -7,10 +7,24 @@ const (
 	TK_RETURN
 	TK_EQUAL
 	TK_NOTEQUAL
+	TK_IF
+	TK_ELSE
+	TK_FOR
+	TK_WHILE
+	TK_GOTO
+	TK_BREAK
+	TK_CONTINUE
 )
 
 var reservationTypes = map[string]int{
-	"return": TK_RETURN,
+	"return":   TK_RETURN,
+	"if":       TK_IF,
+	"else":     TK_ELSE,
+	"for":      TK_FOR,
+	"while":    TK_WHILE,
+	"goto":     TK_GOTO,
+	"break":    TK_BREAK,
+	"continue": TK_CONTINUE,
 }
 
 type Token struct {

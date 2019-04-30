@@ -36,12 +36,16 @@ var registerIndex = []string{
 }
 
 type Generator struct {
-	Variables map[string]int
+	Variables        map[string]int
+	LabelCnt         int
+	CurrentLoopBegin string
+	CurrentLoopEnd   string
 }
 
 func NewGenerator() *Generator {
 	return &Generator{
 		Variables: map[string]int{},
+		LabelCnt:  0,
 	}
 }
 
@@ -206,6 +210,90 @@ func (g *Generator) VisitCall(n *CallNode) (interface{}, error) {
 	}
 	fmt.Printf("    call _%s\n", n.Identifier)
 	fmt.Printf("    push rax\n")
+	return nil, nil
+}
+
+func (g *Generator) VisitIf(n *If) (interface{}, error) {
+	n.Expression.Accept(g)
+	label := fmt.Sprintf(".Lend%04d", g.LabelCnt)
+	fmt.Printf("    pop rax\n")
+	fmt.Printf("    cmp rax, 0\n")
+	fmt.Printf("    je %s\n", label)
+	g.LabelCnt++
+	n.IfStatements.Accept(g)
+	fmt.Printf("%s:\n", label)
+	return nil, nil
+}
+
+func (g *Generator) VisitFor(n *For) (interface{}, error) {
+	beginLabel := fmt.Sprintf(".Lbegin%04d", g.LabelCnt)
+	endLabel := fmt.Sprintf(".Lend%04d", g.LabelCnt)
+	oldBegin := g.CurrentLoopBegin
+	oldEnd := g.CurrentLoopEnd
+	g.CurrentLoopBegin = beginLabel
+	g.CurrentLoopEnd = endLabel
+	g.LabelCnt++
+
+	n.Init.Accept(g)
+	fmt.Printf("    pop rax\n")
+	fmt.Printf("%s:\n", beginLabel)
+	n.Expression.Accept(g)
+	fmt.Printf("    pop rax\n")
+	fmt.Printf("    cmp rax, 0\n")
+	fmt.Printf("    je %s\n", endLabel)
+	n.Statements.Accept(g)
+	n.Update.Accept(g)
+	fmt.Printf("    pop rax\n")
+	fmt.Printf("jmp %s\n", beginLabel)
+	fmt.Printf("%s:\n", endLabel)
+
+	g.CurrentLoopBegin = oldBegin
+	g.CurrentLoopEnd = oldEnd
+	return nil, nil
+}
+
+func (g *Generator) VisitWhile(n *While) (interface{}, error) {
+	beginLabel := fmt.Sprintf(".Lbegin%04d", g.LabelCnt)
+	endLabel := fmt.Sprintf(".Lend%04d", g.LabelCnt)
+	oldBegin := g.CurrentLoopBegin
+	oldEnd := g.CurrentLoopEnd
+	g.CurrentLoopBegin = beginLabel
+	g.CurrentLoopEnd = endLabel
+	g.LabelCnt++
+
+	fmt.Printf("%s:\n", beginLabel)
+	n.Expression.Accept(g)
+	fmt.Printf("    pop rax\n")
+	fmt.Printf("    cmp rax, 0\n")
+	fmt.Printf("    je %s\n", endLabel)
+	n.Statements.Accept(g)
+	fmt.Printf("jmp %s\n", beginLabel)
+	fmt.Printf("%s:\n", endLabel)
+
+	g.CurrentLoopBegin = oldBegin
+	g.CurrentLoopEnd = oldEnd
+	return nil, nil
+}
+
+func (g *Generator) VisitGoto(n *Goto) (interface{}, error) {
+	return nil, nil
+}
+
+func (g *Generator) VisitContinue(n *Continue) (interface{}, error) {
+	fmt.Printf("jmp %s\n", g.CurrentLoopBegin)
+	return nil, nil
+}
+
+func (g *Generator) VisitBreak(n *Break) (interface{}, error) {
+	fmt.Printf("jmp %s\n", g.CurrentLoopEnd)
+	return nil, nil
+}
+
+func (g *Generator) VisitBlock(n *Block) (interface{}, error) {
+	for _, stmt := range n.Statements {
+		stmt.Accept(g)
+		fmt.Printf("    pop rax\n")
+	}
 	return nil, nil
 }
 

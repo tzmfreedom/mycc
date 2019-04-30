@@ -13,6 +13,13 @@ type Visitor interface {
 	VisitFunction(n *FunctionNode) (interface{}, error)
 	VisitReturn(n *ReturnNode) (interface{}, error)
 	VisitIdentifier(n *IdentifierNode) (interface{}, error)
+	VisitIf(n *If) (interface{}, error)
+	VisitFor(n *For) (interface{}, error)
+	VisitGoto(n *Goto) (interface{}, error)
+	VisitWhile(n *While) (interface{}, error)
+	VisitBreak(n *Break) (interface{}, error)
+	VisitContinue(n *Continue) (interface{}, error)
+	VisitBlock(n *Block) (interface{}, error)
 }
 
 type IntegerNode struct {
@@ -79,6 +86,64 @@ type IdentifierNode struct {
 
 func (n *IdentifierNode) Accept(v Visitor) (interface{}, error) {
 	return v.VisitIdentifier(n)
+}
+
+type If struct {
+	Expression     Node
+	IfStatements   Node
+	ElseStatements Node
+}
+
+func (n *If) Accept(v Visitor) (interface{}, error) {
+	return v.VisitIf(n)
+}
+
+type For struct {
+	Init       Node
+	Expression Node
+	Update     Node
+	Statements Node
+}
+
+func (n *For) Accept(v Visitor) (interface{}, error) {
+	return v.VisitFor(n)
+}
+
+type While struct {
+	Expression Node
+	Statements Node
+}
+
+func (n *While) Accept(v Visitor) (interface{}, error) {
+	return v.VisitWhile(n)
+}
+
+type Goto struct {
+	Label string
+}
+
+func (n *Goto) Accept(v Visitor) (interface{}, error) {
+	return v.VisitGoto(n)
+}
+
+type Break struct{}
+
+func (n *Break) Accept(v Visitor) (interface{}, error) {
+	return v.VisitBreak(n)
+}
+
+type Continue struct{}
+
+func (n *Continue) Accept(v Visitor) (interface{}, error) {
+	return v.VisitContinue(n)
+}
+
+type Block struct {
+	Statements []Node
+}
+
+func (n *Block) Accept(v Visitor) (interface{}, error) {
+	return v.VisitBlock(n)
 }
 
 type Node interface {

@@ -44,7 +44,10 @@ func (p *Parser) declarations() []Node {
 }
 
 func (p *Parser) declaration() Node {
-	ident := p.identifier()
+	ident := p.consume(TK_IDENT)
+	if ident == nil {
+		return nil
+	}
 	if t := p.consume('('); t == nil {
 		return nil
 	}
@@ -52,17 +55,14 @@ func (p *Parser) declaration() Node {
 	if t := p.consume(')'); t == nil {
 		return nil
 	}
-	if t := p.consume('{'); t == nil {
-		return nil
-	}
-	statements := p.statements()
-	if t := p.consume('}'); t == nil {
+	block := p.block()
+	if block == nil {
 		return nil
 	}
 	return &FunctionNode{
 		Identifier: ident.Value,
 		Parameters: params,
-		Statements: statements,
+		Statements: block.(*Block).Statements,
 	}
 }
 
@@ -82,11 +82,11 @@ func (p *Parser) parameters() []*Parameter {
 }
 
 func (p *Parser) parameter() *Parameter {
-	typeNode := p.identifier()
+	typeNode := p.consume(TK_IDENT)
 	if typeNode == nil {
 		return nil
 	}
-	ident := p.identifier()
+	ident := p.consume(TK_IDENT)
 	if ident == nil {
 		return nil
 	}
@@ -109,17 +109,153 @@ func (p *Parser) statements() []Node {
 }
 
 func (p *Parser) statement() Node {
-	if stmt := p.expressionStatement(); stmt != nil {
+	if stmt := p.try(p.block); stmt != nil {
+		return stmt
+	}
+	if stmt := p.try(p.expressionStatement); stmt != nil {
 		return stmt
 	}
 
-	if stmt := p.returnStatement(); stmt != nil {
+	if stmt := p.try(p.returnStatement); stmt != nil {
+		return stmt
+	}
+
+	if stmt := p.try(p.ifStatement); stmt != nil {
+		return stmt
+	}
+
+	if stmt := p.try(p.whileStatement); stmt != nil {
+		return stmt
+	}
+
+	if stmt := p.try(p.forStatement); stmt != nil {
+		return stmt
+	}
+
+	if stmt := p.try(p.continueStatement); stmt != nil {
+		return stmt
+	}
+
+	if stmt := p.try(p.breakStatement); stmt != nil {
 		return stmt
 	}
 	return nil
 }
 
-func (p *Parser) returnStatement() *ReturnNode {
+func (p *Parser) ifStatement() Node {
+	if t := p.consume(TK_IF); t == nil {
+		return nil
+	}
+	if t := p.consume('('); t == nil {
+		return nil
+	}
+	expression := p.expression()
+	if t := p.consume(')'); t == nil {
+		return nil
+	}
+	stmt := p.statement()
+	if stmt == nil {
+		return nil
+	}
+	return &If{
+		Expression:     expression,
+		IfStatements:   stmt,
+		ElseStatements: nil,
+	}
+}
+
+func (p *Parser) breakStatement() Node {
+	if t := p.consume(TK_BREAK); t == nil {
+		return nil
+	}
+	return &Break{}
+}
+
+func (p *Parser) continueStatement() Node {
+	if t := p.consume(TK_CONTINUE); t == nil {
+		return nil
+	}
+	return &Continue{}
+}
+
+func (p *Parser) whileStatement() Node {
+	if t := p.consume(TK_WHILE); t == nil {
+		return nil
+	}
+	if t := p.consume('('); t == nil {
+		return nil
+	}
+	expression := p.expression()
+	if t := p.consume(')'); t == nil {
+		return nil
+	}
+	stmt := p.statement()
+	if stmt == nil {
+		return nil
+	}
+	return &While{
+		Expression: expression,
+		Statements: stmt,
+	}
+}
+
+func (p *Parser) forStatement() Node {
+	if t := p.consume(TK_FOR); t == nil {
+		return nil
+	}
+	if t := p.consume('('); t == nil {
+		return nil
+	}
+	init := p.expression()
+	if init != nil {
+		return nil
+	}
+	if t := p.consume(';'); t == nil {
+		return nil
+	}
+	exp := p.expression()
+	if exp != nil {
+		return nil
+	}
+	if t := p.consume(';'); t == nil {
+		return nil
+	}
+	update := p.expression()
+	if update != nil {
+		return nil
+	}
+	if t := p.consume(';'); t == nil {
+		return nil
+	}
+	stmt := p.statement()
+	if stmt == nil {
+		return nil
+	}
+	return &For{
+		Init:       init,
+		Expression: exp,
+		Update:     update,
+		Statements: stmt,
+	}
+}
+
+func (p *Parser) block() Node {
+	if t := p.consume('{'); t == nil {
+		return nil
+	}
+	statements := p.statements()
+	if statements == nil {
+		return nil
+	}
+	if t := p.consume('}'); t == nil {
+		return nil
+	}
+	return &Block{
+		Statements: statements,
+	}
+}
+
+func (p *Parser) returnStatement() Node {
 	if ret := p.consume(TK_RETURN); ret == nil {
 		return nil
 	}
@@ -136,7 +272,13 @@ func (p *Parser) returnStatement() *ReturnNode {
 }
 
 func (p *Parser) expressionStatement() Node {
-	exp := p.assignExpression()
+	exp := p.try(p.assignExpression)
+	if exp == nil {
+		exp = p.callExpression()
+		if exp == nil {
+			return nil
+		}
+	}
 	if colon := p.consume(';'); colon == nil {
 		return nil
 	}
@@ -154,7 +296,7 @@ func (p *Parser) expression() Node {
 }
 
 func (p *Parser) assignExpression() Node {
-	ident := p.identifier()
+	ident := p.consume(TK_IDENT)
 	if ident == nil {
 		return nil
 	}
@@ -167,19 +309,11 @@ func (p *Parser) assignExpression() Node {
 		return nil
 	}
 	return &BinaryOperatorNode{
-		Type:  token.Type,
-		Left:  ident,
+		Type: token.Type,
+		Left: &IdentifierNode{
+			Value: ident.Value,
+		},
 		Right: exp,
-	}
-}
-
-func (p *Parser) identifier() *IdentifierNode {
-	token := p.consume(TK_IDENT)
-	if token == nil {
-		return nil
-	}
-	return &IdentifierNode{
-		Value: token.Value,
 	}
 }
 
@@ -242,10 +376,10 @@ func (p *Parser) mul() Node {
 
 func (p *Parser) unary() Node {
 	if token := p.consume('+'); token != nil {
-		return p.call()
+		return p.callExpression()
 	}
 	if token := p.consume('-'); token != nil {
-		if term := p.call(); term != nil {
+		if term := p.callExpression(); term != nil {
 			return &BinaryOperatorNode{
 				Type: '-',
 				Left: &IntegerNode{
@@ -255,17 +389,17 @@ func (p *Parser) unary() Node {
 			}
 		}
 	}
-	return p.call()
+	return p.callExpression()
 }
 
-func (p *Parser) call() Node {
+func (p *Parser) callExpression() Node {
 	current := p.Index
-	if ident := p.identifier(); ident != nil {
+	if t := p.consume(TK_IDENT); t != nil {
 		if token := p.consume('('); token != nil {
 			args := p.expressionList()
 			if token := p.consume(')'); token != nil {
 				return &CallNode{
-					Identifier: ident.Value,
+					Identifier: t.Value,
 					Args:       args,
 				}
 			}
