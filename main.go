@@ -51,10 +51,27 @@ func NewGenerator() *Generator {
 
 func (g *Generator) checkVariable(n Node) {
 	switch node := n.(type) {
+	case *Block:
+		for _, stmt := range node.Statements {
+			g.checkVariable(stmt)
+		}
+	case *While:
+		g.checkVariable(node.Expression)
+		g.checkVariable(node.Statements)
+	case *For:
+		g.checkVariable(node.Init)
+		g.checkVariable(node.Update)
+		g.checkVariable(node.Expression)
+		g.checkVariable(node.Statements)
+	case *If:
+		g.checkVariable(node.IfStatements)
+		g.checkVariable(node.Expression)
 	case *BinaryOperatorNode:
 		if node.Type == '=' {
 			ident := node.Left.(*IdentifierNode).Value
-			g.Variables[ident] = len(g.Variables)
+			if _, ok := g.Variables[ident]; !ok {
+				g.Variables[ident] = len(g.Variables)
+			}
 		}
 		g.checkVariable(node.Left)
 		g.checkVariable(node.Right)
@@ -269,9 +286,9 @@ func (g *Generator) VisitWhile(n *While) (interface{}, error) {
 	n.Statements.Accept(g)
 	fmt.Printf("jmp %s\n", beginLabel)
 	fmt.Printf("%s:\n", endLabel)
-
 	g.CurrentLoopBegin = oldBegin
 	g.CurrentLoopEnd = oldEnd
+	fmt.Printf("    push rax\n")
 	return nil, nil
 }
 
