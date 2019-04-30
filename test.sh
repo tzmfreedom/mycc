@@ -50,4 +50,6 @@ test 3 "int i = 0; while (i != 3) { i = i + 1; int j = debug(i); } return i;"
 test 10 "for (int i = 0; i != 10; i = i + 1) { debug(i); } return i;"
 test 10 "for (int i = 0; i != 10; i = i + 1) debug(i); return i;"
 test 10 "int x; x = 10; int *y; y = &x; return *y;"
+test 4 "int *p; alloc4(&p, 1, 2, 4, 8); int *q; q = p + 2; return *q;"
+test 8 "int *p; alloc4(&p, 1, 2, 4, 8); int *q; q = p + 3; return *q;"
 echo OK

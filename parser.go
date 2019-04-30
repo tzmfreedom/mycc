@@ -169,11 +169,8 @@ func (p *Parser) variableDeclarationStatement() Node {
 	if typeNode == nil {
 		return nil
 	}
-	var ctype *Ctype
 	ptrs := p.repeat('*')
-	ctype = &Ctype{
-		Value: typeMap[typeNode.Value],
-	}
+	ctype := ctypeMap[typeNode.Value]
 	for i := 0; i < len(ptrs); i++ {
 		ctype = &Ctype{
 			Value: TYPE_PTR,

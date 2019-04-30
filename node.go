@@ -11,15 +11,18 @@ const (
 	TYPE_PTR
 )
 
-var typeMap = map[string]int{
-	"int":  TYPE_INT,
-	"char": TYPE_CHAR,
+var ctypeMap = map[string]*Ctype{
+	"int":  ctype_int,
+	"char": ctype_char,
 }
 
 type Ctype struct {
 	Value int
 	Ptrof *Ctype
 }
+
+var ctype_int = &Ctype{Value: TYPE_INT}
+var ctype_char = &Ctype{Value: TYPE_CHAR}
 
 type Visitor interface {
 	VisitInteger(n *IntegerNode) (interface{}, error)

@@ -97,6 +97,7 @@ func (g *Generator) checkVariable(n Node) {
 		} else {
 			g.Variables[node.Identifier] = &Variable{
 				Index: len(g.Variables),
+				Type:  node.Type,
 			}
 		}
 		g.checkVariable(node.Expression)
@@ -117,6 +118,23 @@ func (g *Generator) VisitBinaryOperator(n *BinaryOperatorNode) (interface{}, err
 	case '+', '-', '*', '/':
 		n.Left.Accept(g)
 		n.Right.Accept(g)
+		if ident := n.Left.(*IdentifierNode); ident != nil {
+			if v := g.Variables[ident.Value]; v.Type.Value == TYPE_PTR {
+				g.generatePop("rax")
+				fmt.Printf("    mov rdi, 4\n")
+				fmt.Printf("    mul rdi\n")
+				g.generatePush("rax")
+				g.generatePop("rdi")
+				g.generatePop("rax")
+				if n.Type == '+' {
+					fmt.Printf("    add rax, rdi\n")
+				} else if n.Type == '-' {
+					fmt.Printf("    sub rax, rdi\n")
+				}
+				g.generatePush("rax")
+				return nil, nil
+			}
+		}
 		g.generatePop("rdi")
 		g.generatePop("rax")
 		if n.Type == '/' {
@@ -186,6 +204,7 @@ func (g *Generator) VisitFunction(n *FunctionNode) (interface{}, error) {
 	for i, p := range n.Parameters {
 		g.Variables[p.Identifier] = &Variable{
 			Index: i,
+			Type:  ctypeMap[p.Type],
 		}
 	}
 	for _, stmt := range n.Statements {
