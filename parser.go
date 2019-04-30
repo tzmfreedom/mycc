@@ -31,6 +31,18 @@ func (p *Parser) consume(t int) *Token {
 	return nil
 }
 
+func (p *Parser) repeat(t int) []*Token {
+	tokens := []*Token{}
+	for {
+		token := p.consume(t)
+		if token == nil {
+			break
+		}
+		tokens = append(tokens, token)
+	}
+	return tokens
+}
+
 func (p *Parser) declarations() []Node {
 	declarations := []Node{}
 	for {
@@ -157,13 +169,24 @@ func (p *Parser) variableDeclarationStatement() Node {
 	if typeNode == nil {
 		return nil
 	}
+	var ctype *Ctype
+	ptrs := p.repeat('*')
+	ctype = &Ctype{
+		Value: typeMap[typeNode.Value],
+	}
+	for i := 0; i < len(ptrs); i++ {
+		ctype = &Ctype{
+			Value: TYPE_PTR,
+			Ptrof: ctype,
+		}
+	}
 	ident := p.consume(TK_IDENT)
 	if ident == nil {
 		return nil
 	}
 	if colon := p.consume(';'); colon != nil {
 		return &VariableDeclaration{
-			Type:       typeNode.Value,
+			Type:       ctype,
 			Identifier: ident.Value,
 			Expression: nil,
 		}
@@ -180,7 +203,7 @@ func (p *Parser) variableDeclarationStatement() Node {
 		return nil
 	}
 	return &VariableDeclaration{
-		Type:       typeNode.Value,
+		Type:       ctype,
 		Identifier: ident.Value,
 		Expression: exp,
 	}
@@ -256,25 +279,16 @@ func (p *Parser) forStatement() Node {
 	if t := p.consume('('); t == nil {
 		return nil
 	}
-	init := p.expression()
-	if init != nil {
-		return nil
-	}
-	if t := p.consume(';'); t == nil {
-		return nil
+	init := p.variableDeclarationStatement()
+	if init == nil {
+		init = p.expressionStatement()
 	}
 	exp := p.expression()
-	if exp != nil {
-		return nil
-	}
 	if t := p.consume(';'); t == nil {
 		return nil
 	}
 	update := p.expression()
-	if update != nil {
-		return nil
-	}
-	if t := p.consume(';'); t == nil {
+	if t := p.consume(')'); t == nil {
 		return nil
 	}
 	stmt := p.statement()
@@ -336,20 +350,21 @@ func (p *Parser) expressionStatement() Node {
 }
 
 func (p *Parser) expression() Node {
-	if exp := p.try(p.add); exp != nil {
-		return exp
-	}
 	if assign := p.try(p.assignExpression); assign != nil {
 		return assign
+	}
+	if exp := p.try(p.add); exp != nil {
+		return exp
 	}
 	return nil
 }
 
 func (p *Parser) assignExpression() Node {
-	ident := p.consume(TK_IDENT)
-	if ident == nil {
+	i := p.consume(TK_IDENT)
+	if i == nil {
 		return nil
 	}
+	ident := &IdentifierNode{Value: i.Value}
 	token := p.consume('=')
 	if token == nil {
 		return nil
@@ -436,6 +451,24 @@ func (p *Parser) unary() Node {
 					Value: 0,
 				},
 				Right: term,
+			}
+		}
+	}
+	if t := p.consume('&'); t != nil {
+		ident := p.consume(TK_IDENT)
+		if ident != nil {
+			return &UnaryOperatorNode{
+				Type:       '&',
+				Expression: &IdentifierNode{Value: ident.Value},
+			}
+		}
+	}
+	if tokens := p.repeat('*'); len(tokens) > 0 {
+		ident := p.consume(TK_IDENT)
+		if ident != nil {
+			return &UnaryOperatorNode{
+				Type:       '*',
+				Expression: &IdentifierNode{Value: ident.Value},
 			}
 		}
 	}

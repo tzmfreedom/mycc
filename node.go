@@ -5,6 +5,22 @@ const (
 	ND_NOTEQUAL
 )
 
+const (
+	TYPE_INT = iota
+	TYPE_CHAR
+	TYPE_PTR
+)
+
+var typeMap = map[string]int{
+	"int":  TYPE_INT,
+	"char": TYPE_CHAR,
+}
+
+type Ctype struct {
+	Value int
+	Ptrof *Ctype
+}
+
 type Visitor interface {
 	VisitInteger(n *IntegerNode) (interface{}, error)
 	VisitString(n *StringNode) (interface{}, error)
@@ -21,6 +37,7 @@ type Visitor interface {
 	VisitContinue(n *Continue) (interface{}, error)
 	VisitBlock(n *Block) (interface{}, error)
 	VisitVariableDeclaration(n *VariableDeclaration) (interface{}, error)
+	VisitUnaryOperator(n *UnaryOperatorNode) (interface{}, error)
 }
 
 type IntegerNode struct {
@@ -90,6 +107,15 @@ func (n *IdentifierNode) Accept(v Visitor) (interface{}, error) {
 	return v.VisitIdentifier(n)
 }
 
+type UnaryOperatorNode struct {
+	Type       int
+	Expression Node
+}
+
+func (n *UnaryOperatorNode) Accept(v Visitor) (interface{}, error) {
+	return v.VisitUnaryOperator(n)
+}
+
 type If struct {
 	Expression     Node
 	IfStatements   Node
@@ -149,7 +175,7 @@ func (n *Block) Accept(v Visitor) (interface{}, error) {
 }
 
 type VariableDeclaration struct {
-	Type       string
+	Type       *Ctype
 	Identifier string
 	Expression Node
 }

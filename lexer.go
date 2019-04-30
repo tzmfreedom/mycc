@@ -14,6 +14,7 @@ const (
 	TK_GOTO
 	TK_BREAK
 	TK_CONTINUE
+	TK_PTR
 )
 
 var reservationTypes = map[string]int{
@@ -28,10 +29,11 @@ var reservationTypes = map[string]int{
 }
 
 type Token struct {
-	Type   int
-	Value  string
-	Line   int
-	Column int
+	Type    int
+	Value   string
+	PtrSize int
+	Line    int
+	Column  int
 }
 
 type Lexer struct {
@@ -62,7 +64,7 @@ func (l *Lexer) Tokenize(str string) []*Token {
 		r := l.current()
 		var token *Token
 		switch r {
-		case '+', '-', '*', '/', '(', ')', ';', ',', '{', '}':
+		case '+', '-', '*', '/', '(', ')', ';', ',', '{', '}', '&':
 			token = l.createToken(int(r), string(r))
 			l.Index++
 			l.Column++
