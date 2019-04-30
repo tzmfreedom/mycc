@@ -469,6 +469,18 @@ func (p *Parser) unary() Node {
 			}
 		}
 	}
+	if token := p.consume(TK_SIZEOF); token != nil {
+		if t := p.consume('('); t != nil {
+			if exp := p.expression(); exp != nil {
+				if t := p.consume(')'); t != nil {
+					return &UnaryOperatorNode{
+						Type:       ND_SIZEOF,
+						Expression: exp,
+					}
+				}
+			}
+		}
+	}
 	return p.callExpression()
 }
 

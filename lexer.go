@@ -14,7 +14,7 @@ const (
 	TK_GOTO
 	TK_BREAK
 	TK_CONTINUE
-	TK_PTR
+	TK_SIZEOF
 )
 
 var reservationTypes = map[string]int{
@@ -26,6 +26,7 @@ var reservationTypes = map[string]int{
 	"goto":     TK_GOTO,
 	"break":    TK_BREAK,
 	"continue": TK_CONTINUE,
+	"sizeof":   TK_SIZEOF,
 }
 
 type Token struct {

@@ -3,6 +3,7 @@ package main
 const (
 	ND_EQUAL = iota + 256
 	ND_NOTEQUAL
+	ND_SIZEOF
 )
 
 const (
