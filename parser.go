@@ -479,9 +479,13 @@ func (p *Parser) unary() Node {
 	}
 	if token := p.consume(TK_SIZEOF); token != nil {
 		if t := p.consume('('); t != nil {
-			if exp := p.unary(); exp != nil {
+			if exp := p.expression(); exp != nil {
 				if t := p.consume(')'); t != nil {
 					switch node := exp.(type) {
+					case *IdentifierNode:
+						return &IntegerNode{
+							Value: p.LVars[node.Value].Type.Size,
+						}
 					case *IntegerNode:
 						return &IntegerNode{
 							Value: ctype_int.Size,
@@ -563,12 +567,12 @@ func (p *Parser) expressionList() []Node {
 
 func (p *Parser) getCtype(l Node, r Node) *Ctype {
 	if l != nil {
-		if ident := l.(*IdentifierNode); ident != nil {
+		if ident, ok := l.(*IdentifierNode); ok {
 			return p.LVars[ident.Value].Type
 		}
 	}
 	if r != nil {
-		if ident := r.(*IdentifierNode); ident != nil {
+		if ident, ok := r.(*IdentifierNode); ok {
 			return p.LVars[ident.Value].Type
 		}
 	}
