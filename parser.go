@@ -44,6 +44,10 @@ func (p *Parser) declarations() []Node {
 }
 
 func (p *Parser) declaration() Node {
+	returnType := p.consume(TK_IDENT)
+	if returnType == nil {
+		return nil
+	}
 	ident := p.consume(TK_IDENT)
 	if ident == nil {
 		return nil
@@ -60,6 +64,7 @@ func (p *Parser) declaration() Node {
 		return nil
 	}
 	return &FunctionNode{
+		ReturnType: returnType.Value,
 		Identifier: ident.Value,
 		Parameters: params,
 		Statements: block.(*Block).Statements,
@@ -112,6 +117,7 @@ func (p *Parser) statement() Node {
 	if stmt := p.try(p.block); stmt != nil {
 		return stmt
 	}
+
 	if stmt := p.try(p.expressionStatement); stmt != nil {
 		return stmt
 	}
@@ -139,7 +145,45 @@ func (p *Parser) statement() Node {
 	if stmt := p.try(p.breakStatement); stmt != nil {
 		return stmt
 	}
+
+	if stmt := p.try(p.variableDeclarationStatement); stmt != nil {
+		return stmt
+	}
 	return nil
+}
+
+func (p *Parser) variableDeclarationStatement() Node {
+	typeNode := p.consume(TK_IDENT)
+	if typeNode == nil {
+		return nil
+	}
+	ident := p.consume(TK_IDENT)
+	if ident == nil {
+		return nil
+	}
+	if colon := p.consume(';'); colon != nil {
+		return &VariableDeclaration{
+			Type:       typeNode.Value,
+			Identifier: ident.Value,
+			Expression: nil,
+		}
+	}
+	token := p.consume('=')
+	if token == nil {
+		return nil
+	}
+	exp := p.expression()
+	if exp == nil {
+		return nil
+	}
+	if colon := p.consume(';'); colon == nil {
+		return nil
+	}
+	return &VariableDeclaration{
+		Type:       typeNode.Value,
+		Identifier: ident.Value,
+		Expression: exp,
+	}
 }
 
 func (p *Parser) ifStatement() Node {
@@ -168,11 +212,17 @@ func (p *Parser) breakStatement() Node {
 	if t := p.consume(TK_BREAK); t == nil {
 		return nil
 	}
+	if colon := p.consume(';'); colon == nil {
+		return nil
+	}
 	return &Break{}
 }
 
 func (p *Parser) continueStatement() Node {
 	if t := p.consume(TK_CONTINUE); t == nil {
+		return nil
+	}
+	if colon := p.consume(';'); colon == nil {
 		return nil
 	}
 	return &Continue{}

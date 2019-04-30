@@ -36,16 +36,34 @@ var registerIndex = []string{
 }
 
 type Generator struct {
-	Variables        map[string]int
+	Variables        map[string]*Variable
 	LabelCnt         int
+	RspCounter       int
 	CurrentLoopBegin string
 	CurrentLoopEnd   string
 }
 
+const (
+	VAR_INT = iota
+	VAR_CHAR
+	VAR_PTR
+)
+
+type VariableType struct {
+	Value int
+	Ptrof *VariableType
+}
+
+type Variable struct {
+	Index int
+	Type  *VariableType
+}
+
 func NewGenerator() *Generator {
 	return &Generator{
-		Variables: map[string]int{},
-		LabelCnt:  0,
+		Variables:  map[string]*Variable{},
+		LabelCnt:   0,
+		RspCounter: 0,
 	}
 }
 
@@ -70,16 +88,25 @@ func (g *Generator) checkVariable(n Node) {
 		if node.Type == '=' {
 			ident := node.Left.(*IdentifierNode).Value
 			if _, ok := g.Variables[ident]; !ok {
-				g.Variables[ident] = len(g.Variables)
+				panic("no variable declaration: " + ident)
 			}
 		}
-		g.checkVariable(node.Left)
 		g.checkVariable(node.Right)
+	case *VariableDeclaration:
+		_, ok := g.Variables[node.Identifier]
+		if ok {
+			panic("variable redeclaration: " + node.Identifier)
+		} else {
+			g.Variables[node.Identifier] = &Variable{
+				Index: len(g.Variables),
+			}
+		}
+		g.checkVariable(node.Expression)
 	}
 }
 
 func (g *Generator) VisitInteger(n *IntegerNode) (interface{}, error) {
-	fmt.Printf("    push %d\n", n.Value)
+	g.generatePush(fmt.Sprintf("%d", n.Value))
 	return nil, nil
 }
 
@@ -92,8 +119,8 @@ func (g *Generator) VisitBinaryOperator(n *BinaryOperatorNode) (interface{}, err
 	case '+', '-', '*', '/':
 		n.Left.Accept(g)
 		n.Right.Accept(g)
-		fmt.Printf("    pop rdi\n")
-		fmt.Printf("    pop rax\n")
+		g.generatePop("rdi")
+		g.generatePop("rax")
 		if n.Type == '/' {
 			fmt.Printf("    mov rdx, 0\n")
 			fmt.Printf("    div rdi\n")
@@ -106,53 +133,79 @@ func (g *Generator) VisitBinaryOperator(n *BinaryOperatorNode) (interface{}, err
 		} else {
 			fmt.Printf("    %s rax, rdi\n", string(rune(n.Type)))
 		}
-		fmt.Printf("    push rax\n")
+		g.generatePush("rax")
 	case '=':
 		ident, ok := n.Left.(*IdentifierNode)
 		if !ok {
 			panic("no identifier")
 		}
-		index := g.Variables[ident.Value]
+		v := g.Variables[ident.Value]
 		fmt.Printf("    mov rax, rbp\n")
-		fmt.Printf("    sub rax, %d\n", (index+1)*MemorySize)
-		fmt.Printf("    push rax\n")
+		fmt.Printf("    sub rax, %d\n", (v.Index+1)*MemorySize)
+		g.generatePush("rax")
 		n.Right.Accept(g)
-		fmt.Printf("    pop rdi\n")
-		fmt.Printf("    pop rax\n")
+		g.generatePop("rdi")
+		g.generatePop("rax")
 		fmt.Printf("    mov [rax], rdi\n")
-		fmt.Printf("    push rdi\n")
+		g.generatePush("rdi")
 	case ND_EQUAL:
 		n.Left.Accept(g)
 		n.Right.Accept(g)
-		fmt.Printf("    pop rax\n")
-		fmt.Printf("    pop rdi\n")
+		g.generatePop("rax")
+		g.generatePop("rdi")
 		fmt.Printf("    cmp rdi, rax\n")
 		fmt.Printf("    sete al\n")
 		fmt.Printf("    movzx rax, al\n")
-		fmt.Printf("    push rax\n")
+		g.generatePush("rax")
 	case ND_NOTEQUAL:
 		n.Left.Accept(g)
 		n.Right.Accept(g)
-		fmt.Printf("    pop rax\n")
-		fmt.Printf("    pop rdi\n")
+		g.generatePop("rax")
+		g.generatePop("rdi")
 		fmt.Printf("    cmp rdi, rax\n")
 		fmt.Printf("    setne al\n")
 		fmt.Printf("    movzx rax, al\n")
-		fmt.Printf("    push rax\n")
+		g.generatePush("rax")
 	}
 	return nil, nil
 }
 
 func (g *Generator) VisitReturn(n *ReturnNode) (interface{}, error) {
 	n.Expression.Accept(g)
-	fmt.Printf("    pop rax\n")
+	g.generatePop("rax")
 	fmt.Printf("    mov rsp, rbp\n")
-	fmt.Printf("    pop rbp\n")
+	g.generatePop("rbp")
 	fmt.Printf("    ret\n")
 	return nil, nil
 }
 
 func (g *Generator) VisitFunction(n *FunctionNode) (interface{}, error) {
+	fmt.Printf("\n")
+	fmt.Printf("_%s:\n", n.Identifier)
+	g.generatePush("rbp")
+	fmt.Printf("    mov rbp, rsp\n")
+
+	for i, p := range n.Parameters {
+		g.Variables[p.Identifier] = &Variable{
+			Index: i,
+		}
+	}
+	for _, stmt := range n.Statements {
+		g.checkVariable(stmt)
+	}
+	fmt.Printf("    sub rsp, %d\n", len(g.Variables)*MemorySize)
+
+	for i, _ := range n.Parameters {
+		fmt.Printf("    mov rax, rbp\n")
+		fmt.Printf("    sub rax, %d\n", (i+1)*MemorySize)
+		fmt.Printf("    mov [rax], %s\n", registerIndex[i])
+	}
+
+	g.RspCounter--
+	for _, stmt := range n.Statements {
+		stmt.Accept(g)
+		g.generatePop("rax")
+	}
 	return nil, nil
 }
 
@@ -161,41 +214,14 @@ func (g *Generator) generate(declarations []Node) {
 .intel_syntax noprefix
 .global _main`)
 	for _, declaration := range declarations {
-		if f, ok := declaration.(*FunctionNode); ok {
-			fmt.Printf("\n")
-			fmt.Printf("_%s:\n", f.Identifier)
-			fmt.Printf("    push rbp\n")
-			fmt.Printf("    mov rbp, rsp\n")
-
-			for i, p := range f.Parameters {
-				g.Variables[p.Identifier] = i
-			}
-			for _, stmt := range f.Statements {
-				g.checkVariable(stmt)
-			}
-			fmt.Printf("    sub rsp, %d\n", len(g.Variables)*MemorySize)
-
-			for i, _ := range f.Parameters {
-				fmt.Printf("    mov rax, rbp\n")
-				fmt.Printf("    sub rax, %d\n", (i+1)*MemorySize)
-				fmt.Printf("    mov [rax], %s\n", registerIndex[i])
-			}
-
-			for _, stmt := range f.Statements {
-				stmt.Accept(g)
-				fmt.Printf("    pop rax\n")
-			}
-			//fmt.Printf("    mov rsp, rbp\n")
-			//fmt.Printf("    pop rbp\n")
-			//fmt.Printf("    ret\n")
-		}
+		declaration.Accept(g)
 	}
 }
 
 func (g *Generator) VisitIdentifier(n *IdentifierNode) (interface{}, error) {
-	index := g.Variables[n.Value]
+	v := g.Variables[n.Value]
 	fmt.Printf("    mov rax, rbp\n")
-	fmt.Printf("    sub rax, %d\n", (index+1)*MemorySize)
+	fmt.Printf("    sub rax, %d\n", (v.Index+1)*MemorySize)
 	fmt.Printf("    push [rax]\n")
 	return nil, nil
 }
@@ -203,37 +229,43 @@ func (g *Generator) VisitIdentifier(n *IdentifierNode) (interface{}, error) {
 func (g *Generator) VisitCall(n *CallNode) (interface{}, error) {
 	if len(n.Args) > 0 {
 		n.Args[0].Accept(g)
-		fmt.Printf("    pop rdi\n")
+		g.generatePop("rdi")
 	}
 	if len(n.Args) > 1 {
 		n.Args[1].Accept(g)
-		fmt.Printf("    pop rsi\n")
+		g.generatePop("rsi")
 	}
 	if len(n.Args) > 2 {
 		n.Args[2].Accept(g)
-		fmt.Printf("    pop rdx\n")
+		g.generatePop("rdx")
 	}
 	if len(n.Args) > 3 {
 		n.Args[3].Accept(g)
-		fmt.Printf("    pop rcx\n")
+		g.generatePop("rcx")
 	}
 	if len(n.Args) > 4 {
 		n.Args[4].Accept(g)
-		fmt.Printf("    pop r8\n")
+		g.generatePop("r8")
 	}
 	if len(n.Args) > 5 {
 		n.Args[5].Accept(g)
-		fmt.Printf("    pop r9\n")
+		g.generatePop("r9")
+	}
+	if g.RspCounter%2 == 1 {
+		fmt.Printf("    sub rsp, 8\n")
 	}
 	fmt.Printf("    call _%s\n", n.Identifier)
-	fmt.Printf("    push rax\n")
+	if g.RspCounter%2 == 1 {
+		fmt.Printf("    add rsp, 8\n")
+	}
+	g.generatePush("rax")
 	return nil, nil
 }
 
 func (g *Generator) VisitIf(n *If) (interface{}, error) {
 	n.Expression.Accept(g)
 	label := fmt.Sprintf(".Lend%04d", g.LabelCnt)
-	fmt.Printf("    pop rax\n")
+	g.generatePop("rax")
 	fmt.Printf("    cmp rax, 0\n")
 	fmt.Printf("    je %s\n", label)
 	g.LabelCnt++
@@ -252,15 +284,15 @@ func (g *Generator) VisitFor(n *For) (interface{}, error) {
 	g.LabelCnt++
 
 	n.Init.Accept(g)
-	fmt.Printf("    pop rax\n")
+	g.generatePop("rax")
 	fmt.Printf("%s:\n", beginLabel)
 	n.Expression.Accept(g)
-	fmt.Printf("    pop rax\n")
+	g.generatePop("rax")
 	fmt.Printf("    cmp rax, 0\n")
 	fmt.Printf("    je %s\n", endLabel)
 	n.Statements.Accept(g)
 	n.Update.Accept(g)
-	fmt.Printf("    pop rax\n")
+	g.generatePop("rax")
 	fmt.Printf("jmp %s\n", beginLabel)
 	fmt.Printf("%s:\n", endLabel)
 
@@ -280,7 +312,7 @@ func (g *Generator) VisitWhile(n *While) (interface{}, error) {
 
 	fmt.Printf("%s:\n", beginLabel)
 	n.Expression.Accept(g)
-	fmt.Printf("    pop rax\n")
+	g.generatePop("rax")
 	fmt.Printf("    cmp rax, 0\n")
 	fmt.Printf("    je %s\n", endLabel)
 	n.Statements.Accept(g)
@@ -288,7 +320,7 @@ func (g *Generator) VisitWhile(n *While) (interface{}, error) {
 	fmt.Printf("%s:\n", endLabel)
 	g.CurrentLoopBegin = oldBegin
 	g.CurrentLoopEnd = oldEnd
-	fmt.Printf("    push rax\n")
+	g.generatePush("rax")
 	return nil, nil
 }
 
@@ -309,9 +341,34 @@ func (g *Generator) VisitBreak(n *Break) (interface{}, error) {
 func (g *Generator) VisitBlock(n *Block) (interface{}, error) {
 	for _, stmt := range n.Statements {
 		stmt.Accept(g)
-		fmt.Printf("    pop rax\n")
+		g.generatePop("rax")
 	}
 	return nil, nil
+}
+
+func (g *Generator) VisitVariableDeclaration(n *VariableDeclaration) (interface{}, error) {
+	if n.Expression != nil {
+		v := g.Variables[n.Identifier]
+		fmt.Printf("    mov rax, rbp\n")
+		fmt.Printf("    sub rax, %d\n", (v.Index+1)*MemorySize)
+		g.generatePush("rax")
+		n.Expression.Accept(g)
+		g.generatePop("rdi")
+		g.generatePop("rax")
+		fmt.Printf("    mov [rax], rdi\n")
+		g.generatePush("rdi")
+	}
+	return nil, nil
+}
+
+func (g *Generator) generatePush(register string) {
+	g.RspCounter++
+	fmt.Printf("    push %s\n", register)
+}
+
+func (g *Generator) generatePop(register string) {
+	g.RspCounter--
+	fmt.Printf("    pop %s\n", register)
 }
 
 func debug(args ...interface{}) {

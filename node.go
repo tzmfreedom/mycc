@@ -20,6 +20,7 @@ type Visitor interface {
 	VisitBreak(n *Break) (interface{}, error)
 	VisitContinue(n *Continue) (interface{}, error)
 	VisitBlock(n *Block) (interface{}, error)
+	VisitVariableDeclaration(n *VariableDeclaration) (interface{}, error)
 }
 
 type IntegerNode struct {
@@ -58,6 +59,7 @@ func (n *CallNode) Accept(v Visitor) (interface{}, error) {
 }
 
 type FunctionNode struct {
+	ReturnType string
 	Identifier string
 	Parameters []*Parameter
 	Statements []Node
@@ -144,6 +146,16 @@ type Block struct {
 
 func (n *Block) Accept(v Visitor) (interface{}, error) {
 	return v.VisitBlock(n)
+}
+
+type VariableDeclaration struct {
+	Type       string
+	Identifier string
+	Expression Node
+}
+
+func (n *VariableDeclaration) Accept(v Visitor) (interface{}, error) {
+	return v.VisitVariableDeclaration(n)
 }
 
 type Node interface {
