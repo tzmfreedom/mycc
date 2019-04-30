@@ -5,6 +5,7 @@ import "strconv"
 type Parser struct {
 	Index  int
 	Tokens []*Token
+	LVars  map[string]*Variable
 }
 
 func NewParser(tokens []*Token) *Parser {
@@ -46,6 +47,7 @@ func (p *Parser) repeat(t int) []*Token {
 func (p *Parser) declarations() []Node {
 	declarations := []Node{}
 	for {
+		p.LVars = map[string]*Variable{}
 		declaration := p.declaration()
 		if declaration == nil {
 			break
@@ -175,6 +177,7 @@ func (p *Parser) variableDeclarationStatement() Node {
 		ctype = &Ctype{
 			Value: TYPE_PTR,
 			Ptrof: ctype,
+			Size:  8,
 		}
 	}
 	ident := p.consume(TK_IDENT)
@@ -182,6 +185,7 @@ func (p *Parser) variableDeclarationStatement() Node {
 		return nil
 	}
 	if colon := p.consume(';'); colon != nil {
+		p.LVars[ident.Value] = &Variable{Type: ctype}
 		return &VariableDeclaration{
 			Type:       ctype,
 			Identifier: ident.Value,
@@ -199,6 +203,7 @@ func (p *Parser) variableDeclarationStatement() Node {
 	if colon := p.consume(';'); colon == nil {
 		return nil
 	}
+	p.LVars[ident.Value] = &Variable{Type: ctype}
 	return &VariableDeclaration{
 		Type:       ctype,
 		Identifier: ident.Value,
@@ -371,28 +376,31 @@ func (p *Parser) assignExpression() Node {
 		return nil
 	}
 	return &BinaryOperatorNode{
-		Type: token.Type,
-		Left: &IdentifierNode{
-			Value: ident.Value,
-		},
+		Type:  token.Type,
+		Left:  ident,
 		Right: exp,
+		Ctype: p.getCtype(ident, exp),
 	}
 }
 
 func (p *Parser) add() Node {
 	node := p.booleanExpression()
 	if next := p.consume('+'); next != nil {
+		right := p.add()
 		return &BinaryOperatorNode{
 			Type:  next.Type,
 			Left:  node,
-			Right: p.add(),
+			Right: right,
+			Ctype: p.getCtype(node, right),
 		}
 	}
 	if next := p.consume('-'); next != nil {
+		right := p.add()
 		return &BinaryOperatorNode{
 			Type:  next.Type,
 			Left:  node,
-			Right: p.add(),
+			Right: right,
+			Ctype: p.getCtype(node, right),
 		}
 	}
 	return node
@@ -471,11 +479,17 @@ func (p *Parser) unary() Node {
 	}
 	if token := p.consume(TK_SIZEOF); token != nil {
 		if t := p.consume('('); t != nil {
-			if exp := p.expression(); exp != nil {
+			if exp := p.unary(); exp != nil {
 				if t := p.consume(')'); t != nil {
-					return &UnaryOperatorNode{
-						Type:       ND_SIZEOF,
-						Expression: exp,
+					switch node := exp.(type) {
+					case *IntegerNode:
+						return &IntegerNode{
+							Value: ctype_int.Size,
+						}
+					case *BinaryOperatorNode:
+						return &IntegerNode{
+							Value: node.Ctype.Size,
+						}
 					}
 				}
 			}
@@ -545,4 +559,34 @@ func (p *Parser) expressionList() []Node {
 		}
 	}
 	return expressionList
+}
+
+func (p *Parser) getCtype(l Node, r Node) *Ctype {
+	if l != nil {
+		if ident := l.(*IdentifierNode); ident != nil {
+			return p.LVars[ident.Value].Type
+		}
+	}
+	if r != nil {
+		if ident := r.(*IdentifierNode); ident != nil {
+			return p.LVars[ident.Value].Type
+		}
+	}
+	if l != nil {
+		switch node := l.(type) {
+		case *BinaryOperatorNode:
+			return node.Ctype
+		case *IntegerNode:
+			return ctype_int
+		}
+	}
+	if r != nil {
+		switch node := l.(type) {
+		case *BinaryOperatorNode:
+			return node.Ctype
+		case *IntegerNode:
+			return ctype_int
+		}
+	}
+	return nil
 }

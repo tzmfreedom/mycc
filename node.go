@@ -20,10 +20,11 @@ var ctypeMap = map[string]*Ctype{
 type Ctype struct {
 	Value int
 	Ptrof *Ctype
+	Size  int
 }
 
-var ctype_int = &Ctype{Value: TYPE_INT}
-var ctype_char = &Ctype{Value: TYPE_CHAR}
+var ctype_int = &Ctype{Value: TYPE_INT, Size: 4}
+var ctype_char = &Ctype{Value: TYPE_CHAR, Size: 4}
 
 type Visitor interface {
 	VisitInteger(n *IntegerNode) (interface{}, error)
@@ -61,6 +62,7 @@ func (n *StringNode) Accept(v Visitor) (interface{}, error) {
 }
 
 type BinaryOperatorNode struct {
+	Ctype *Ctype
 	Type  int
 	Left  Node
 	Right Node
