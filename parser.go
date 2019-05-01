@@ -184,6 +184,17 @@ func (p *Parser) variableDeclarationStatement() Node {
 	if ident == nil {
 		return nil
 	}
+	if t := p.consume('['); t != nil {
+		if num := p.consume(TK_NUMBER); num != nil {
+			if t := p.consume(']'); t != nil {
+				var err error
+				ctype.ArraySize, err = strconv.Atoi(num.Value)
+				if err != nil {
+					panic(err)
+				}
+			}
+		}
+	}
 	if colon := p.consume(';'); colon != nil {
 		p.LVars[ident.Value] = &Variable{Type: ctype}
 		return &VariableDeclaration{
@@ -321,6 +332,31 @@ func (p *Parser) block() Node {
 	}
 }
 
+func (p *Parser) arrayExpression() Node {
+	ident := p.consume(TK_IDENT)
+	if ident == nil {
+		return nil
+	}
+	if t := p.consume('['); t == nil {
+		return nil
+	}
+	num := p.consume(TK_NUMBER)
+	if num == nil {
+		return nil
+	}
+	if t := p.consume(']'); t == nil {
+		return nil
+	}
+	index, err := strconv.Atoi(num.Value)
+	if err != nil {
+		panic(err)
+	}
+	return &ArrayExpression{
+		Identifier: ident.Value,
+		Index:      index,
+	}
+}
+
 func (p *Parser) returnStatement() Node {
 	if ret := p.consume(TK_RETURN); ret == nil {
 		return nil
@@ -362,24 +398,29 @@ func (p *Parser) expression() Node {
 }
 
 func (p *Parser) assignExpression() Node {
-	i := p.consume(TK_IDENT)
-	if i == nil {
-		return nil
+	var left Node
+	if exp := p.try(p.arrayExpression); exp != nil {
+		left = exp
+	} else {
+		i := p.consume(TK_IDENT)
+		if i == nil {
+			return nil
+		}
+		left = &IdentifierNode{Value: i.Value}
 	}
-	ident := &IdentifierNode{Value: i.Value}
 	token := p.consume('=')
 	if token == nil {
 		return nil
 	}
-	exp := p.expression()
-	if exp == nil {
+	right := p.expression()
+	if right == nil {
 		return nil
 	}
 	return &BinaryOperatorNode{
 		Type:  token.Type,
-		Left:  ident,
-		Right: exp,
-		Ctype: p.getCtype(ident, exp),
+		Left:  left,
+		Right: right,
+		Ctype: p.getCtype(left, right),
 	}
 }
 
@@ -532,6 +573,9 @@ func (p *Parser) term() Node {
 			Value: num,
 		}
 	}
+	if exp := p.try(p.arrayExpression); exp != nil {
+		return exp
+	}
 	if ident := p.consume(TK_IDENT); ident != nil {
 		return &IdentifierNode{
 			Value: ident.Value,
@@ -570,10 +614,16 @@ func (p *Parser) getCtype(l Node, r Node) *Ctype {
 		if ident, ok := l.(*IdentifierNode); ok {
 			return p.LVars[ident.Value].Type
 		}
+		if array, ok := l.(*ArrayExpression); ok {
+			return p.LVars[array.Identifier].Type
+		}
 	}
 	if r != nil {
 		if ident, ok := r.(*IdentifierNode); ok {
 			return p.LVars[ident.Value].Type
+		}
+		if array, ok := r.(*ArrayExpression); ok {
+			return p.LVars[array.Identifier].Type
 		}
 	}
 	if l != nil {

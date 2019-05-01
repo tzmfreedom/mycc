@@ -18,9 +18,10 @@ var ctypeMap = map[string]*Ctype{
 }
 
 type Ctype struct {
-	Value int
-	Ptrof *Ctype
-	Size  int
+	Value     int
+	Ptrof     *Ctype
+	Size      int
+	ArraySize int
 }
 
 var ctype_int = &Ctype{Value: TYPE_INT, Size: 4}
@@ -43,6 +44,7 @@ type Visitor interface {
 	VisitBlock(n *Block) (interface{}, error)
 	VisitVariableDeclaration(n *VariableDeclaration) (interface{}, error)
 	VisitUnaryOperator(n *UnaryOperatorNode) (interface{}, error)
+	VisitArrayExpression(n *ArrayExpression) (interface{}, error)
 }
 
 type IntegerNode struct {
@@ -188,6 +190,15 @@ type VariableDeclaration struct {
 
 func (n *VariableDeclaration) Accept(v Visitor) (interface{}, error) {
 	return v.VisitVariableDeclaration(n)
+}
+
+type ArrayExpression struct {
+	Identifier string
+	Index      int
+}
+
+func (n *ArrayExpression) Accept(v Visitor) (interface{}, error) {
+	return v.VisitArrayExpression(n)
 }
 
 type Node interface {

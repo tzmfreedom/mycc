@@ -56,4 +56,8 @@ test() {
 test 4 "int i = 10; return sizeof(i);"
 test 4 "int i = 10; return sizeof(i + 4);"
 test 8 "int *i; return sizeof(i);"
+test 2 "int i[10]; int b = 2; return b;"
+test 10 "int i[10]; i[0] = 10; return i[0];"
+test 11 "int i[10]; i[1] = 11; return i[1];"
+test 12 "int i[10]; i[9] = 12; return i[9];"
 echo OK

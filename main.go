@@ -56,6 +56,25 @@ func NewGenerator() *Generator {
 	}
 }
 
+func (g *Generator) variableStackSize() int {
+	stackSize := 0
+	for _, v := range g.Variables {
+		var size, length int
+		if v.Type.ArraySize == 0 {
+			length = 1
+		} else {
+			length = v.Type.ArraySize
+		}
+		if v.Type.Size%8 == 0 {
+			size = v.Type.Size
+		} else {
+			size = v.Type.Size - v.Type.Size%8 + 8
+		}
+		stackSize += size * length
+	}
+	return stackSize
+}
+
 func (g *Generator) generate(declarations []Node) {
 	fmt.Println(`
 .intel_syntax noprefix
@@ -84,9 +103,15 @@ func (g *Generator) checkVariable(n Node) {
 		g.checkVariable(node.Expression)
 	case *BinaryOperatorNode:
 		if node.Type == '=' {
-			ident := node.Left.(*IdentifierNode).Value
-			if _, ok := g.Variables[ident]; !ok {
-				panic("no variable declaration: " + ident)
+			switch left := node.Left.(type) {
+			case *IdentifierNode:
+				if _, ok := g.Variables[left.Value]; !ok {
+					panic("no variable declaration: " + left.Value)
+				}
+			case *ArrayExpression:
+				if _, ok := g.Variables[left.Identifier]; !ok {
+					panic("no variable declaration: " + left.Identifier)
+				}
 			}
 		}
 		g.checkVariable(node.Right)
@@ -96,7 +121,7 @@ func (g *Generator) checkVariable(n Node) {
 			panic("variable redeclaration: " + node.Identifier)
 		} else {
 			g.Variables[node.Identifier] = &Variable{
-				Index: len(g.Variables),
+				Index: g.variableStackSize(),
 				Type:  node.Type,
 			}
 		}
@@ -121,7 +146,7 @@ func (g *Generator) VisitBinaryOperator(n *BinaryOperatorNode) (interface{}, err
 		if ident := n.Left.(*IdentifierNode); ident != nil {
 			if v := g.Variables[ident.Value]; v.Type.Value == TYPE_PTR {
 				g.generatePop("rax")
-				fmt.Printf("    mov rdi, 4\n")
+				fmt.Printf("    mov rdi, %d\n", v.Type.Size)
 				fmt.Printf("    mul rdi\n")
 				g.generatePush("rax")
 				g.generatePop("rdi")
@@ -151,13 +176,18 @@ func (g *Generator) VisitBinaryOperator(n *BinaryOperatorNode) (interface{}, err
 		}
 		g.generatePush("rax")
 	case '=':
-		ident, ok := n.Left.(*IdentifierNode)
-		if !ok {
+		switch left := n.Left.(type) {
+		case *IdentifierNode:
+			v := g.Variables[left.Value]
+			fmt.Printf("    mov rax, rbp\n")
+			fmt.Printf("    sub rax, %d\n", (v.Index+1)*MemorySize)
+		case *ArrayExpression:
+			v := g.Variables[left.Identifier]
+			fmt.Printf("    mov rax, rbp\n")
+			fmt.Printf("    sub rax, %d\n", (v.Index+left.Index+1)*MemorySize)
+		default:
 			panic("no identifier")
 		}
-		v := g.Variables[ident.Value]
-		fmt.Printf("    mov rax, rbp\n")
-		fmt.Printf("    sub rax, %d\n", (v.Index+1)*MemorySize)
 		g.generatePush("rax")
 		n.Right.Accept(g)
 		g.generatePop("rdi")
@@ -210,8 +240,9 @@ func (g *Generator) VisitFunction(n *FunctionNode) (interface{}, error) {
 	for _, stmt := range n.Statements {
 		g.checkVariable(stmt)
 	}
-	fmt.Printf("    sub rsp, %d\n", len(g.Variables)*MemorySize)
-	g.RspCounter = g.RspCounter - len(g.Variables)
+	stackSize := g.variableStackSize()
+	fmt.Printf("    sub rsp, %d\n", stackSize)
+	g.RspCounter -= stackSize
 
 	for i, _ := range n.Parameters {
 		fmt.Printf("    mov rax, rbp\n")
@@ -387,6 +418,15 @@ func (g *Generator) VisitUnaryOperator(n *UnaryOperatorNode) (interface{}, error
 		fmt.Printf("    sub rax, %d\n", (v.Index+1)*MemorySize)
 		g.generatePush("rax")
 	}
+	return nil, nil
+}
+
+func (g *Generator) VisitArrayExpression(n *ArrayExpression) (interface{}, error) {
+	v := g.Variables[n.Identifier]
+	fmt.Printf("    mov rax, rbp\n")
+	fmt.Printf("    sub rax, %d\n", (v.Index+1)*MemorySize)
+	fmt.Printf("    sub rax, %d\n", n.Index*MemorySize)
+	g.generatePush("[rax]")
 	return nil, nil
 }
 

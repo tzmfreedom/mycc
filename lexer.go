@@ -65,7 +65,7 @@ func (l *Lexer) Tokenize(str string) []*Token {
 		r := l.current()
 		var token *Token
 		switch r {
-		case '+', '-', '*', '/', '(', ')', ';', ',', '{', '}', '&':
+		case '+', '-', '*', '/', '(', ')', ';', ',', '{', '}', '&', '[', ']':
 			token = l.createToken(int(r), string(r))
 			l.Index++
 			l.Column++
