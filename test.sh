@@ -81,6 +81,7 @@ test_g() {
 #test 2 "int a[2]; *(a + 1) = 2; return a[1];"
 #test 3 "int a[2]; *a = 1; *(a + 1) = 2; int *p; p = a; return *p + *(p + 1);"
 test_g 1 "int a; int main() { a = 1; return a; }"
-# test_g 3 "int a = 1; int main() { int a = 2; return a; }"
+test_g 2 "int a; int main() { int a = 2; return a; }"
+test_g 3 "int a = 3; int main() { return a; }"
 
 echo OK

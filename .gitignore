@@ -3,3 +3,4 @@
 tmp
 tmp.s
 mycc
+.cache/

@@ -79,13 +79,37 @@ func (p *Parser) declaration() Node {
 			return f
 		}
 	} else {
-		if t := p.consume(';'); t == nil {
+		if t := p.consume(';'); t != nil {
+			_, ok := p.GVars[ident.Value]
+			if ok {
+				panic("variable redeclaration: " + ident.Value)
+			}
+			p.GVars[ident.Value] = &Variable{Type: ctype}
+			return &GlobalVariableDeclaration{
+				Type:       ctype,
+				Identifier: ident.Value,
+			}
+		}
+		token := p.consume('=')
+		if token == nil {
 			return nil
+		}
+		exp := p.expression()
+		if exp == nil {
+			return nil
+		}
+		if colon := p.consume(';'); colon == nil {
+			return nil
+		}
+		_, ok := p.GVars[ident.Value]
+		if ok {
+			panic("variable redeclaration: " + ident.Value)
 		}
 		p.GVars[ident.Value] = &Variable{Type: ctype}
 		return &GlobalVariableDeclaration{
 			Type:       ctype,
 			Identifier: ident.Value,
+			Expression: exp,
 		}
 	}
 	return nil

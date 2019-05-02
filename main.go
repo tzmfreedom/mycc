@@ -55,8 +55,9 @@ func NewGenerator() *Generator {
 
 func (g *Generator) generate(declarations []Node) {
 	fmt.Println(`
+.data
 .intel_syntax noprefix
-.global _main`)
+.global main`)
 	for _, declaration := range declarations {
 		declaration.Accept(g)
 	}
@@ -125,7 +126,7 @@ func (g *Generator) VisitBinaryOperator(n *BinaryOperator) (interface{}, error) 
 		switch left := n.Left.(type) {
 		case *GlobalIdentifier:
 			g.generatePop("rdi")
-			fmt.Printf("    mov [rip + %s], rdi\n", left.Value)
+			fmt.Printf("    mov %s[rip], rdi\n", left.Value)
 		default:
 			g.generatePop("rdi")
 			g.generatePop("rax")
@@ -165,7 +166,7 @@ func (g *Generator) VisitReturn(n *Return) (interface{}, error) {
 
 func (g *Generator) VisitFunction(n *Function) (interface{}, error) {
 	fmt.Printf("\n")
-	fmt.Printf("_%s:\n", n.Identifier)
+	fmt.Printf("%s:\n", n.Identifier)
 	g.generatePush("rbp")
 	fmt.Printf("    mov rbp, rsp\n")
 
@@ -357,14 +358,24 @@ func (g *Generator) VisitUnaryOperator(n *UnaryOperatorNode) (interface{}, error
 }
 
 func (g *Generator) VisitGlobalIdentifier(n *GlobalIdentifier) (interface{}, error) {
-	fmt.Printf("    mov rax, [rip + %s]\n", n.Value)
+	fmt.Printf("    mov rax, %s[rip]\n", n.Value)
 	g.generatePush("rax")
 	return nil, nil
 }
 
 func (g *Generator) VisitGlobalVariableDeclaration(n *GlobalVariableDeclaration) (interface{}, error) {
 	fmt.Printf("%s:\n", n.Identifier)
-	fmt.Printf("    .zero %d\n", n.Type.Size)
+	if n.Expression != nil {
+		switch n.Type.Value {
+		case TYPE_INT:
+			switch node := n.Expression.(type) {
+			case *Integer:
+				fmt.Printf("    .long %d\n", node.Value)
+				return nil, nil
+			}
+		}
+	}
+	fmt.Printf("    .text %d\n", n.Type.Size)
 	return nil, nil
 }
 
