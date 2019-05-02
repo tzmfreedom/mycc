@@ -4,6 +4,7 @@ SOURCES  = $(wildcard *.go)
 test: mycc
 	./test.sh
 
+.PHONY: run
 run:
 	./main
 
@@ -14,6 +15,7 @@ mycc: $(SOURCES)
 	gofmt -w .
 	go build -o mycc .
 
+.PHONY: test/run
 test/run: mycc
 	echo "$(CODE)" > tmp/tmp.c
 	./mycc tmp/tmp.c > tmp/tmp.s
@@ -22,3 +24,8 @@ test/run: mycc
 
 tmp/hoge.o: tmp/hoge.c
 	gcc -c tmp/hoge.c -o tmp/hoge.o
+
+.PHONY: docker
+docker:
+	docker run --rm -v $(pwd):/mnt/ -it golang
+
