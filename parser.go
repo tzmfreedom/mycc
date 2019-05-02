@@ -6,10 +6,15 @@ type Parser struct {
 	Index  int
 	Tokens []*Token
 	LVars  map[string]*Variable
+	GVars  map[string]*Variable
 }
 
 func NewParser(tokens []*Token) *Parser {
-	return &Parser{Index: 0, Tokens: tokens}
+	return &Parser{
+		Index:  0,
+		Tokens: tokens,
+		GVars:  map[string]*Variable{},
+	}
 }
 
 func (p *Parser) Parse() []Node {
@@ -47,6 +52,9 @@ func (p *Parser) repeat(t int) []*Token {
 func (p *Parser) declarations() []Node {
 	declarations := []Node{}
 	for {
+		if p.consume(TK_EOF) != nil {
+			break
+		}
 		p.LVars = map[string]*Variable{}
 		declaration := p.declaration()
 		if declaration == nil {
@@ -58,14 +66,49 @@ func (p *Parser) declarations() []Node {
 }
 
 func (p *Parser) declaration() Node {
-	returnType := p.consume(TK_IDENT)
-	if returnType == nil {
-		return nil
+	ctype := p.ctype()
+	if ctype == nil {
+		panic("cannot parse type")
 	}
 	ident := p.consume(TK_IDENT)
 	if ident == nil {
 		return nil
 	}
+	if p.current().Type == '(' {
+		if f := p.function(ctype, ident.Value); f != nil {
+			return f
+		}
+	} else {
+		if t := p.consume(';'); t == nil {
+			return nil
+		}
+		p.GVars[ident.Value] = &Variable{Type: ctype}
+		return &GlobalVariableDeclaration{
+			Type:       ctype,
+			Identifier: ident.Value,
+		}
+	}
+	return nil
+}
+
+func (p *Parser) ctype() *Ctype {
+	typeNode := p.consume(TK_IDENT)
+	if typeNode == nil {
+		return nil
+	}
+	ptrs := p.repeat('*')
+	ctype := ctypeMap[typeNode.Value]
+	for i := 0; i < len(ptrs); i++ {
+		ctype = &Ctype{
+			Value: TYPE_PTR,
+			Ptrof: ctype,
+			Size:  8,
+		}
+	}
+	return ctype
+}
+
+func (p *Parser) function(ctype *Ctype, ident string) Node {
 	if t := p.consume('('); t == nil {
 		return nil
 	}
@@ -77,11 +120,12 @@ func (p *Parser) declaration() Node {
 	if block == nil {
 		return nil
 	}
-	return &FunctionNode{
-		ReturnType: ctypeMap[returnType.Value],
-		Identifier: ident.Value,
+	return &Function{
+		ReturnType: ctype,
+		Identifier: ident,
 		Parameters: params,
 		Statements: block.(*Block).Statements,
+		StackSize:  p.localVariableStackSize(),
 	}
 }
 
@@ -109,8 +153,10 @@ func (p *Parser) parameter() *Parameter {
 	if ident == nil {
 		return nil
 	}
+	v := p.createLocalVariable(ctypeMap[typeNode.Value])
+	p.LVars[ident.Value] = v
 	return &Parameter{
-		Type:       typeNode.Value,
+		Variable:   v,
 		Identifier: ident.Value,
 	}
 }
@@ -167,18 +213,9 @@ func (p *Parser) statement() Node {
 }
 
 func (p *Parser) variableDeclarationStatement() Node {
-	typeNode := p.consume(TK_IDENT)
-	if typeNode == nil {
+	ctype := p.ctype()
+	if ctype == nil {
 		return nil
-	}
-	ptrs := p.repeat('*')
-	ctype := ctypeMap[typeNode.Value]
-	for i := 0; i < len(ptrs); i++ {
-		ctype = &Ctype{
-			Value: TYPE_PTR,
-			Ptrof: ctype,
-			Size:  8,
-		}
 	}
 	ident := p.consume(TK_IDENT)
 	if ident == nil {
@@ -201,9 +238,14 @@ func (p *Parser) variableDeclarationStatement() Node {
 		}
 	}
 	if colon := p.consume(';'); colon != nil {
-		p.LVars[ident.Value] = &Variable{Type: ctype}
+		_, ok := p.LVars[ident.Value]
+		if ok {
+			panic("variable redeclaration: " + ident.Value)
+		}
+		v := p.createLocalVariable(ctype)
+		p.LVars[ident.Value] = v
 		return &VariableDeclaration{
-			Type:       ctype,
+			Variable:   v,
 			Identifier: ident.Value,
 			Expression: nil,
 		}
@@ -219,9 +261,14 @@ func (p *Parser) variableDeclarationStatement() Node {
 	if colon := p.consume(';'); colon == nil {
 		return nil
 	}
-	p.LVars[ident.Value] = &Variable{Type: ctype}
+	_, ok := p.LVars[ident.Value]
+	if ok {
+		panic("variable redeclaration: " + ident.Value)
+	}
+	v := p.createLocalVariable(ctype)
+	p.LVars[ident.Value] = v
 	return &VariableDeclaration{
-		Type:       ctype,
+		Variable:   v,
 		Identifier: ident.Value,
 		Expression: exp,
 	}
@@ -338,29 +385,23 @@ func (p *Parser) block() Node {
 }
 
 func (p *Parser) arrayExpression() Node {
-	ident := p.consume(TK_IDENT)
-	if ident == nil {
+	left := p.callExpression()
+	if left == nil {
 		return nil
 	}
 	if t := p.consume('['); t == nil {
 		return nil
 	}
-	num := p.consume(TK_NUMBER)
-	if num == nil {
+	right := p.callExpression()
+	if right == nil {
 		return nil
 	}
 	if t := p.consume(']'); t == nil {
 		return nil
 	}
-	index, err := strconv.Atoi(num.Value)
-	if err != nil {
-		panic(err)
-	}
-	left := &IdentifierNode{Value: ident.Value}
-	right := &IntegerNode{Value: index}
 	return &UnaryOperatorNode{
 		Type: '*',
-		Expression: &BinaryOperatorNode{
+		Expression: &BinaryOperator{
 			Type:  '+',
 			Left:  left,
 			Right: right,
@@ -380,7 +421,7 @@ func (p *Parser) returnStatement() Node {
 	if colon := p.consume(';'); colon == nil {
 		return nil
 	}
-	return &ReturnNode{
+	return &Return{
 		Expression: exp,
 	}
 }
@@ -417,7 +458,7 @@ func (p *Parser) assignExpression() Node {
 			if ident == nil {
 				return nil
 			}
-			left = &IdentifierNode{Value: ident.Value}
+			left = p.lookup(ident.Value)
 		}
 	}
 	token := p.consume('=')
@@ -428,7 +469,7 @@ func (p *Parser) assignExpression() Node {
 	if right == nil {
 		return nil
 	}
-	return &BinaryOperatorNode{
+	return &BinaryOperator{
 		Type:  token.Type,
 		Left:  left,
 		Right: right,
@@ -440,7 +481,7 @@ func (p *Parser) add() Node {
 	node := p.booleanExpression()
 	if next := p.consume('+'); next != nil {
 		right := p.add()
-		return &BinaryOperatorNode{
+		return &BinaryOperator{
 			Type:  next.Type,
 			Left:  node,
 			Right: right,
@@ -449,7 +490,7 @@ func (p *Parser) add() Node {
 	}
 	if next := p.consume('-'); next != nil {
 		right := p.add()
-		return &BinaryOperatorNode{
+		return &BinaryOperator{
 			Type:  next.Type,
 			Left:  node,
 			Right: right,
@@ -462,14 +503,14 @@ func (p *Parser) add() Node {
 func (p *Parser) booleanExpression() Node {
 	node := p.mul()
 	if next := p.consume(TK_EQUAL); next != nil {
-		return &BinaryOperatorNode{
+		return &BinaryOperator{
 			Type:  ND_EQUAL,
 			Left:  node,
 			Right: p.booleanExpression(),
 		}
 	}
 	if next := p.consume(TK_NOTEQUAL); next != nil {
-		return &BinaryOperatorNode{
+		return &BinaryOperator{
 			Type:  ND_NOTEQUAL,
 			Left:  node,
 			Right: p.booleanExpression(),
@@ -481,14 +522,14 @@ func (p *Parser) booleanExpression() Node {
 func (p *Parser) mul() Node {
 	node := p.unary()
 	if next := p.consume('*'); next != nil {
-		return &BinaryOperatorNode{
+		return &BinaryOperator{
 			Type:  next.Type,
 			Left:  node,
 			Right: p.mul(),
 		}
 	}
 	if next := p.consume('-'); next != nil {
-		return &BinaryOperatorNode{
+		return &BinaryOperator{
 			Type:  next.Type,
 			Left:  node,
 			Right: p.mul(),
@@ -503,9 +544,9 @@ func (p *Parser) unary() Node {
 	}
 	if token := p.consume('-'); token != nil {
 		if term := p.callExpression(); term != nil {
-			return &BinaryOperatorNode{
+			return &BinaryOperator{
 				Type: '-',
-				Left: &IntegerNode{
+				Left: &Integer{
 					Value: 0,
 				},
 				Right: term,
@@ -515,9 +556,13 @@ func (p *Parser) unary() Node {
 	if t := p.consume('&'); t != nil {
 		ident := p.consume(TK_IDENT)
 		if ident != nil {
+			exp := p.lookup(ident.Value)
+			if exp == nil {
+				panic("no variable declaration: " + ident.Value)
+			}
 			return &UnaryOperatorNode{
 				Type:       '&',
-				Expression: &IdentifierNode{Value: ident.Value},
+				Expression: exp,
 			}
 		}
 	}
@@ -529,22 +574,25 @@ func (p *Parser) unary() Node {
 			if exp := p.expression(); exp != nil {
 				if t := p.consume(')'); t != nil {
 					switch node := exp.(type) {
-					case *IdentifierNode:
-						return &IntegerNode{
-							Value: p.LVars[node.Value].Type.Size,
+					case *Identifier:
+						return &Integer{
+							Value: node.Variable.Type.Size,
 						}
-					case *IntegerNode:
-						return &IntegerNode{
+					case *Integer:
+						return &Integer{
 							Value: ctype_int.Size,
 						}
-					case *BinaryOperatorNode:
-						return &IntegerNode{
+					case *BinaryOperator:
+						return &Integer{
 							Value: node.Ctype.Size,
 						}
 					}
 				}
 			}
 		}
+	}
+	if exp := p.try(p.arrayExpression); exp != nil {
+		return exp
 	}
 	return p.callExpression()
 }
@@ -570,7 +618,7 @@ func (p *Parser) callExpression() Node {
 		if token := p.consume('('); token != nil {
 			args := p.expressionList()
 			if token := p.consume(')'); token != nil {
-				return &CallNode{
+				return &Call{
 					Identifier: t.Value,
 					Args:       args,
 				}
@@ -590,16 +638,13 @@ func (p *Parser) term() Node {
 	}
 	if token := p.consume(TK_NUMBER); token != nil {
 		num, _ := strconv.Atoi(token.Value)
-		return &IntegerNode{
+		return &Integer{
 			Value: num,
 		}
 	}
-	if exp := p.try(p.arrayExpression); exp != nil {
-		return exp
-	}
 	if ident := p.consume(TK_IDENT); ident != nil {
-		return &IdentifierNode{
-			Value: ident.Value,
+		if i := p.lookup(ident.Value); i != nil {
+			return i
 		}
 	}
 	return nil
@@ -632,30 +677,66 @@ func (p *Parser) expressionList() []Node {
 
 func (p *Parser) getCtype(l Node, r Node) *Ctype {
 	if l != nil {
-		if ident, ok := l.(*IdentifierNode); ok {
-			return p.LVars[ident.Value].Type
+		if ident, ok := l.(*Identifier); ok {
+			return ident.Variable.Type
 		}
 	}
 	if r != nil {
-		if ident, ok := r.(*IdentifierNode); ok {
-			return p.LVars[ident.Value].Type
+		if ident, ok := r.(*Identifier); ok {
+			return ident.Variable.Type
 		}
 	}
 	if l != nil {
 		switch node := l.(type) {
-		case *BinaryOperatorNode:
+		case *BinaryOperator:
 			return node.Ctype
-		case *IntegerNode:
+		case *Integer:
 			return ctype_int
 		}
 	}
 	if r != nil {
 		switch node := l.(type) {
-		case *BinaryOperatorNode:
+		case *BinaryOperator:
 			return node.Ctype
-		case *IntegerNode:
+		case *Integer:
 			return ctype_int
 		}
 	}
 	return nil
+}
+
+func (p *Parser) localVariableStackSize() int {
+	stackSize := 0
+	for _, v := range p.LVars {
+		var size int
+		if v.Type.Size%8 == 0 {
+			size = v.Type.Size
+		} else {
+			size = v.Type.Size - v.Type.Size%8 + 8
+		}
+		stackSize += size
+	}
+	return stackSize
+}
+
+func (p *Parser) lookup(ident string) Node {
+	if v, ok := p.LVars[ident]; ok {
+		return &Identifier{
+			Value:    ident,
+			Variable: v,
+		}
+	} else if v, ok := p.GVars[ident]; ok {
+		return &GlobalIdentifier{
+			Value:    ident,
+			Variable: v,
+		}
+	}
+	return nil
+}
+
+func (p *Parser) createLocalVariable(ctype *Ctype) *Variable {
+	return &Variable{
+		Type:  ctype,
+		Index: p.localVariableStackSize() / 8,
+	}
 }

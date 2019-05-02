@@ -60,6 +60,7 @@ func (l *Lexer) Tokenize(str string) []*Token {
 	tokens := []*Token{}
 	for {
 		if l.Index >= len(l.Runes) {
+			tokens = append(tokens, l.createToken(TK_EOF, "EOF"))
 			break
 		}
 		r := l.current()

@@ -19,6 +19,23 @@ test() {
     fi
 }
 
+test_g() {
+    expected=$1
+    input=$2
+    echo "$input" > ./tmp/tmp.c
+    ./mycc ./tmp/tmp.c > tmp/tmp.s
+    gcc -o ./tmp/tmp tmp/tmp.s tmp/hoge.o
+    ./tmp/tmp
+    actual="$?"
+
+    if [[ "$actual" = "$expected" ]]; then
+        echo "$input => $expected"
+    else
+        echo "$expected expected, but got $actual"
+        exit 1
+    fi
+}
+
 #test 3 "a = 3;"
 #test 8 "a = 1 + 3 + 4;"
 #test 7 "a = 1 + 10 - 4;"
@@ -59,7 +76,11 @@ test() {
 #test 2 "int i[10]; int b = 2; return b;"
 #test 10 "int i[10]; i[0] = 10; return i[0];"
 #test 11 "int i[10]; i[1] = 11; return i[1];"
-test 1 "int a[2]; *a = 1; return a[0];"
-test 2 "int a[2]; *(a + 1) = 2; return a[1];"
-test 3 "int a[2]; *a = 1; *(a + 1) = 2; int *p; p = a; return *p + *(p + 1);"
+#test 11 "int i[2]; i[1] = 11; return 1[i];"
+#test 1 "int a[2]; *a = 1; return a[0];"
+#test 2 "int a[2]; *(a + 1) = 2; return a[1];"
+#test 3 "int a[2]; *a = 1; *(a + 1) = 2; int *p; p = a; return *p + *(p + 1);"
+test_g 1 "int a; int main() { a = 1; return a; }"
+# test_g 3 "int a = 1; int main() { int a = 2; return a; }"
+
 echo OK

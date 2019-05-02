@@ -28,13 +28,14 @@ var ctype_int = &Ctype{Value: TYPE_INT, Size: 4}
 var ctype_char = &Ctype{Value: TYPE_CHAR, Size: 4}
 
 type Visitor interface {
-	VisitInteger(n *IntegerNode) (interface{}, error)
-	VisitString(n *StringNode) (interface{}, error)
-	VisitBinaryOperator(n *BinaryOperatorNode) (interface{}, error)
-	VisitCall(n *CallNode) (interface{}, error)
-	VisitFunction(n *FunctionNode) (interface{}, error)
-	VisitReturn(n *ReturnNode) (interface{}, error)
-	VisitIdentifier(n *IdentifierNode) (interface{}, error)
+	VisitInteger(n *Integer) (interface{}, error)
+	VisitString(n *String) (interface{}, error)
+	VisitBinaryOperator(n *BinaryOperator) (interface{}, error)
+	VisitCall(n *Call) (interface{}, error)
+	VisitFunction(n *Function) (interface{}, error)
+	VisitReturn(n *Return) (interface{}, error)
+	VisitIdentifier(n *Identifier) (interface{}, error)
+	VisitGlobalIdentifier(n *GlobalIdentifier) (interface{}, error)
 	VisitIf(n *If) (interface{}, error)
 	VisitFor(n *For) (interface{}, error)
 	VisitGoto(n *Goto) (interface{}, error)
@@ -44,74 +45,86 @@ type Visitor interface {
 	VisitBlock(n *Block) (interface{}, error)
 	VisitVariableDeclaration(n *VariableDeclaration) (interface{}, error)
 	VisitUnaryOperator(n *UnaryOperatorNode) (interface{}, error)
+	VisitGlobalVariableDeclaration(m *GlobalVariableDeclaration) (interface{}, error)
 }
 
-type IntegerNode struct {
+type Integer struct {
 	Value int
 }
 
-func (n *IntegerNode) Accept(v Visitor) (interface{}, error) {
+func (n *Integer) Accept(v Visitor) (interface{}, error) {
 	return v.VisitInteger(n)
 }
 
-type StringNode struct {
+type String struct {
 	Value string
 }
 
-func (n *StringNode) Accept(v Visitor) (interface{}, error) {
+func (n *String) Accept(v Visitor) (interface{}, error) {
 	return v.VisitString(n)
 }
 
-type BinaryOperatorNode struct {
+type BinaryOperator struct {
 	Ctype *Ctype
 	Type  int
 	Left  Node
 	Right Node
 }
 
-func (n *BinaryOperatorNode) Accept(v Visitor) (interface{}, error) {
+func (n *BinaryOperator) Accept(v Visitor) (interface{}, error) {
 	return v.VisitBinaryOperator(n)
 }
 
-type CallNode struct {
+type Call struct {
 	Identifier string
 	Args       []Node
 }
 
-func (n *CallNode) Accept(v Visitor) (interface{}, error) {
+func (n *Call) Accept(v Visitor) (interface{}, error) {
 	return v.VisitCall(n)
 }
 
-type FunctionNode struct {
+type Function struct {
 	ReturnType *Ctype
 	Identifier string
 	Parameters []*Parameter
 	Statements []Node
+	StackSize  int
 }
 
-func (n *FunctionNode) Accept(v Visitor) (interface{}, error) {
+func (n *Function) Accept(v Visitor) (interface{}, error) {
 	return v.VisitFunction(n)
 }
 
 type Parameter struct {
-	Type       string
 	Identifier string
+	Variable   *Variable
 }
 
-type ReturnNode struct {
+type Return struct {
 	Expression Node
 }
 
-func (n *ReturnNode) Accept(v Visitor) (interface{}, error) {
+func (n *Return) Accept(v Visitor) (interface{}, error) {
 	return v.VisitReturn(n)
 }
 
-type IdentifierNode struct {
-	Value string
+type Identifier struct {
+	Value    string
+	Variable *Variable
 }
 
-func (n *IdentifierNode) Accept(v Visitor) (interface{}, error) {
+func (n *Identifier) Accept(v Visitor) (interface{}, error) {
 	return v.VisitIdentifier(n)
+}
+
+type GlobalIdentifier struct {
+	Value    string
+	Variable *Variable
+}
+
+func (n *GlobalIdentifier) Accept(v Visitor) (interface{}, error) {
+	return v.VisitGlobalIdentifier(n)
 }
 
 type UnaryOperatorNode struct {
@@ -181,14 +194,29 @@ func (n *Block) Accept(v Visitor) (interface{}, error) {
 	return v.VisitBlock(n)
 }
 
+type Variable struct {
+	Index int
+	Type  *Ctype
+}
+
 type VariableDeclaration struct {
-	Type       *Ctype
+	Variable   *Variable
 	Identifier string
 	Expression Node
 }
 
 func (n *VariableDeclaration) Accept(v Visitor) (interface{}, error) {
 	return v.VisitVariableDeclaration(n)
+}
+
+type GlobalVariableDeclaration struct {
+	Type       *Ctype
+	Identifier string
+	Expression Node
+}
+
+func (n *GlobalVariableDeclaration) Accept(v Visitor) (interface{}, error) {
+	return v.VisitGlobalVariableDeclaration(n)
 }
 
 type Node interface {
