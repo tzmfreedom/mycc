@@ -83,5 +83,8 @@ test_g() {
 test_g 1 "int a; int main() { a = 1; return a; }"
 test_g 2 "int a; int main() { int a = 2; return a; }"
 test_g 3 "int a = 3; int main() { return a; }"
+test 97 "char a = 'a'; return a;"
+test 3 "char x[3]; x[0] = -1; x[1] = 2; int y; y = 4; return x[0] + y;"
+test 3 "char *x = \"234\"; int y; y = 4; return x[0] + y;"
 
 echo OK

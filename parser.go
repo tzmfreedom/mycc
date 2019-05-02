@@ -3,17 +3,19 @@ package main
 import "strconv"
 
 type Parser struct {
-	Index  int
-	Tokens []*Token
-	LVars  map[string]*Variable
-	GVars  map[string]*Variable
+	Index   int
+	Tokens  []*Token
+	LVars   map[string]*Variable
+	GVars   map[string]*Variable
+	Strings map[string]int
 }
 
 func NewParser(tokens []*Token) *Parser {
 	return &Parser{
-		Index:  0,
-		Tokens: tokens,
-		GVars:  map[string]*Variable{},
+		Index:   0,
+		Tokens:  tokens,
+		GVars:   map[string]*Variable{},
+		Strings: map[string]int{},
 	}
 }
 
@@ -610,6 +612,10 @@ func (p *Parser) unary() Node {
 						return &Integer{
 							Value: node.Ctype.Size,
 						}
+					case *Char:
+						return &Integer{
+							Value: ctype_char.Size,
+						}
 					}
 				}
 			}
@@ -664,6 +670,25 @@ func (p *Parser) term() Node {
 		num, _ := strconv.Atoi(token.Value)
 		return &Integer{
 			Value: num,
+		}
+	}
+	if token := p.consume(TK_CHAR); token != nil {
+		return &Char{
+			Value: int(rune(token.Value[0])),
+		}
+	}
+	if token := p.consume(TK_STRING); token != nil {
+		runes := []rune(token.Value)
+		chars := make([]*Char, len(runes))
+		for i, r := range runes {
+			chars[i] = &Char{
+				Value: int(r),
+			}
+		}
+		p.Strings[token.Value] = len(p.Strings)
+		return &String{
+			Value: token.Value,
+			Chars: chars,
 		}
 	}
 	if ident := p.consume(TK_IDENT); ident != nil {

@@ -25,10 +25,11 @@ type Ctype struct {
 }
 
 var ctype_int = &Ctype{Value: TYPE_INT, Size: 4}
-var ctype_char = &Ctype{Value: TYPE_CHAR, Size: 4}
+var ctype_char = &Ctype{Value: TYPE_CHAR, Size: 1}
 
 type Visitor interface {
 	VisitInteger(n *Integer) (interface{}, error)
+	VisitChar(n *Char) (interface{}, error)
 	VisitString(n *String) (interface{}, error)
 	VisitBinaryOperator(n *BinaryOperator) (interface{}, error)
 	VisitCall(n *Call) (interface{}, error)
@@ -56,8 +57,17 @@ func (n *Integer) Accept(v Visitor) (interface{}, error) {
 	return v.VisitInteger(n)
 }
 
+type Char struct {
+	Value int
+}
+
+func (n *Char) Accept(v Visitor) (interface{}, error) {
+	return v.VisitChar(n)
+}
+
 type String struct {
 	Value string
+	Chars []*Char
 }
 
 func (n *String) Accept(v Visitor) (interface{}, error) {

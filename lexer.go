@@ -2,6 +2,8 @@ package main
 
 const (
 	TK_NUMBER = iota + 256
+	TK_CHAR
+	TK_STRING
 	TK_IDENT
 	TK_EOF
 	TK_RETURN
@@ -68,8 +70,7 @@ func (l *Lexer) Tokenize(str string) []*Token {
 		switch r {
 		case '+', '-', '*', '/', '(', ')', ';', ',', '{', '}', '&', '[', ']':
 			token = l.createToken(int(r), string(r))
-			l.Index++
-			l.Column++
+			l.next()
 		case '!', '=':
 			if l.peek() == '=' {
 				if l.current() == '!' {
@@ -77,24 +78,24 @@ func (l *Lexer) Tokenize(str string) []*Token {
 				} else {
 					token = l.createToken(TK_EQUAL, string(r))
 				}
-				l.Index++
-				l.Column++
+				l.next()
 			} else {
 				token = l.createToken(int(r), string(r))
 			}
-			l.Index++
-			l.Column++
+			l.next()
 		case '\n':
 			l.Column = 1
-			l.Index++
-			l.Line++
+			l.next()
 			continue
 		case ' ', '　':
-			l.Index++
-			l.Column++
+			l.next()
 			continue
 		default:
-			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+			if r == '\'' {
+				token = l.parseChar()
+			} else if r == '"' {
+				token = l.parseString()
+			} else if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
 				token = l.parseIdentifier()
 			} else if r >= '0' && r <= '9' {
 				token = l.parseNumber()
@@ -118,15 +119,14 @@ func (l *Lexer) createToken(t int, v string) *Token {
 
 func (l *Lexer) parseNumber() *Token {
 	runes := []rune{}
+	r := l.current()
 	for {
-		r := l.Runes[l.Index]
 		if r >= '0' && r <= '9' {
 			runes = append(runes, r)
 		} else {
 			break
 		}
-		l.Index++
-		l.Column++
+		r = l.next()
 		if len(l.Runes) <= l.Index {
 			break
 		}
@@ -136,15 +136,14 @@ func (l *Lexer) parseNumber() *Token {
 
 func (l *Lexer) parseIdentifier() *Token {
 	runes := []rune{}
+	r := l.current()
 	for {
-		r := l.Runes[l.Index]
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9' && len(runes) > 0) {
 			runes = append(runes, r)
 		} else {
 			break
 		}
-		l.Index++
-		l.Column++
+		r = l.next()
 		if len(l.Runes) <= l.Index {
 			break
 		}
@@ -156,7 +155,45 @@ func (l *Lexer) parseIdentifier() *Token {
 	return l.createToken(TK_IDENT, ident)
 }
 
+func (l *Lexer) parseChar() *Token {
+	if l.current() != '\'' {
+		return nil
+	}
+	r := l.next()
+	if r == '\'' {
+		return nil
+	}
+	if l.next() != '\'' {
+		return nil
+	}
+	l.next()
+	return l.createToken(TK_CHAR, string(r))
+}
+
+func (l *Lexer) parseString() *Token {
+	if l.current() != '"' {
+		return nil
+	}
+	r := l.next()
+	runes := []rune{}
+	for {
+		if len(l.Runes) <= l.Index {
+			break
+		}
+		if r == '"' {
+			l.next()
+			break
+		}
+		runes = append(runes, r)
+		r = l.next()
+	}
+	return l.createToken(TK_STRING, string(runes))
+}
+
 func (l *Lexer) current() rune {
+	if len(l.Runes) <= l.Index {
+		return 0
+	}
 	return l.Runes[l.Index]
 }
 
@@ -165,4 +202,10 @@ func (l *Lexer) peek() rune {
 		return 0
 	}
 	return l.Runes[l.Index+1]
+}
+
+func (l *Lexer) next() rune {
+	l.Index++
+	l.Column++
+	return l.current()
 }
