@@ -78,7 +78,7 @@ func (p *Parser) declaration() Node {
 		return nil
 	}
 	return &FunctionNode{
-		ReturnType: returnType.Value,
+		ReturnType: ctypeMap[returnType.Value],
 		Identifier: ident.Value,
 		Parameters: params,
 		Statements: block.(*Block).Statements,
@@ -187,10 +187,15 @@ func (p *Parser) variableDeclarationStatement() Node {
 	if t := p.consume('['); t != nil {
 		if num := p.consume(TK_NUMBER); num != nil {
 			if t := p.consume(']'); t != nil {
-				var err error
-				ctype.ArraySize, err = strconv.Atoi(num.Value)
+				arraySize, err := strconv.Atoi(num.Value)
 				if err != nil {
 					panic(err)
+				}
+				ctype = &Ctype{
+					Value:     TYPE_ARRAY,
+					Ptrof:     ctype,
+					Size:      arraySize * ctype.Size,
+					ArraySize: arraySize,
 				}
 			}
 		}
@@ -351,9 +356,16 @@ func (p *Parser) arrayExpression() Node {
 	if err != nil {
 		panic(err)
 	}
-	return &ArrayExpression{
-		Identifier: ident.Value,
-		Index:      index,
+	left := &IdentifierNode{Value: ident.Value}
+	right := &IntegerNode{Value: index}
+	return &UnaryOperatorNode{
+		Type: '*',
+		Expression: &BinaryOperatorNode{
+			Type:  '+',
+			Left:  left,
+			Right: right,
+			Ctype: p.getCtype(left, right),
+		},
 	}
 }
 
@@ -399,14 +411,14 @@ func (p *Parser) expression() Node {
 
 func (p *Parser) assignExpression() Node {
 	var left Node
-	if exp := p.try(p.arrayExpression); exp != nil {
-		left = exp
-	} else {
-		i := p.consume(TK_IDENT)
-		if i == nil {
-			return nil
+	if left = p.try(p.arrayExpression); left == nil {
+		if left = p.try(p.pointerExpression); left == nil {
+			ident := p.consume(TK_IDENT)
+			if ident == nil {
+				return nil
+			}
+			left = &IdentifierNode{Value: ident.Value}
 		}
-		left = &IdentifierNode{Value: i.Value}
 	}
 	token := p.consume('=')
 	if token == nil {
@@ -509,14 +521,8 @@ func (p *Parser) unary() Node {
 			}
 		}
 	}
-	if tokens := p.repeat('*'); len(tokens) > 0 {
-		ident := p.consume(TK_IDENT)
-		if ident != nil {
-			return &UnaryOperatorNode{
-				Type:       '*',
-				Expression: &IdentifierNode{Value: ident.Value},
-			}
-		}
+	if exp := p.try(p.pointerExpression); exp != nil {
+		return exp
 	}
 	if token := p.consume(TK_SIZEOF); token != nil {
 		if t := p.consume('('); t != nil {
@@ -541,6 +547,21 @@ func (p *Parser) unary() Node {
 		}
 	}
 	return p.callExpression()
+}
+
+func (p *Parser) pointerExpression() Node {
+	if tokens := p.repeat('*'); len(tokens) > 0 {
+		if exp := p.unary(); exp != nil {
+			for range tokens {
+				exp = &UnaryOperatorNode{
+					Type:       '*',
+					Expression: exp,
+				}
+			}
+			return exp
+		}
+	}
+	return nil
 }
 
 func (p *Parser) callExpression() Node {
@@ -614,16 +635,10 @@ func (p *Parser) getCtype(l Node, r Node) *Ctype {
 		if ident, ok := l.(*IdentifierNode); ok {
 			return p.LVars[ident.Value].Type
 		}
-		if array, ok := l.(*ArrayExpression); ok {
-			return p.LVars[array.Identifier].Type
-		}
 	}
 	if r != nil {
 		if ident, ok := r.(*IdentifierNode); ok {
 			return p.LVars[ident.Value].Type
-		}
-		if array, ok := r.(*ArrayExpression); ok {
-			return p.LVars[array.Identifier].Type
 		}
 	}
 	if l != nil {

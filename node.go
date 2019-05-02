@@ -3,13 +3,13 @@ package main
 const (
 	ND_EQUAL = iota + 256
 	ND_NOTEQUAL
-	ND_SIZEOF
 )
 
 const (
 	TYPE_INT = iota
 	TYPE_CHAR
 	TYPE_PTR
+	TYPE_ARRAY
 )
 
 var ctypeMap = map[string]*Ctype{
@@ -44,7 +44,6 @@ type Visitor interface {
 	VisitBlock(n *Block) (interface{}, error)
 	VisitVariableDeclaration(n *VariableDeclaration) (interface{}, error)
 	VisitUnaryOperator(n *UnaryOperatorNode) (interface{}, error)
-	VisitArrayExpression(n *ArrayExpression) (interface{}, error)
 }
 
 type IntegerNode struct {
@@ -84,7 +83,7 @@ func (n *CallNode) Accept(v Visitor) (interface{}, error) {
 }
 
 type FunctionNode struct {
-	ReturnType string
+	ReturnType *Ctype
 	Identifier string
 	Parameters []*Parameter
 	Statements []Node
@@ -190,15 +189,6 @@ type VariableDeclaration struct {
 
 func (n *VariableDeclaration) Accept(v Visitor) (interface{}, error) {
 	return v.VisitVariableDeclaration(n)
-}
-
-type ArrayExpression struct {
-	Identifier string
-	Index      int
-}
-
-func (n *ArrayExpression) Accept(v Visitor) (interface{}, error) {
-	return v.VisitArrayExpression(n)
 }
 
 type Node interface {

@@ -59,18 +59,13 @@ func NewGenerator() *Generator {
 func (g *Generator) variableStackSize() int {
 	stackSize := 0
 	for _, v := range g.Variables {
-		var size, length int
-		if v.Type.ArraySize == 0 {
-			length = 1
-		} else {
-			length = v.Type.ArraySize
-		}
+		var size int
 		if v.Type.Size%8 == 0 {
 			size = v.Type.Size
 		} else {
 			size = v.Type.Size - v.Type.Size%8 + 8
 		}
-		stackSize += size * length
+		stackSize += size
 	}
 	return stackSize
 }
@@ -108,10 +103,6 @@ func (g *Generator) checkVariable(n Node) {
 				if _, ok := g.Variables[left.Value]; !ok {
 					panic("no variable declaration: " + left.Value)
 				}
-			case *ArrayExpression:
-				if _, ok := g.Variables[left.Identifier]; !ok {
-					panic("no variable declaration: " + left.Identifier)
-				}
 			}
 		}
 		g.checkVariable(node.Right)
@@ -121,7 +112,7 @@ func (g *Generator) checkVariable(n Node) {
 			panic("variable redeclaration: " + node.Identifier)
 		} else {
 			g.Variables[node.Identifier] = &Variable{
-				Index: g.variableStackSize(),
+				Index: g.variableStackSize() / 8,
 				Type:  node.Type,
 			}
 		}
@@ -143,10 +134,10 @@ func (g *Generator) VisitBinaryOperator(n *BinaryOperatorNode) (interface{}, err
 	case '+', '-', '*', '/':
 		n.Left.Accept(g)
 		n.Right.Accept(g)
-		if ident := n.Left.(*IdentifierNode); ident != nil {
-			if v := g.Variables[ident.Value]; v.Type.Value == TYPE_PTR {
+		if ident, ok := n.Left.(*IdentifierNode); ok {
+			if v := g.Variables[ident.Value]; v.Type.Value == TYPE_PTR || v.Type.Value == TYPE_ARRAY {
 				g.generatePop("rax")
-				fmt.Printf("    mov rdi, %d\n", v.Type.Size)
+				fmt.Printf("    mov rdi, %d\n", v.Type.Ptrof.Size)
 				fmt.Printf("    mul rdi\n")
 				g.generatePush("rax")
 				g.generatePop("rdi")
@@ -181,12 +172,11 @@ func (g *Generator) VisitBinaryOperator(n *BinaryOperatorNode) (interface{}, err
 			v := g.Variables[left.Value]
 			fmt.Printf("    mov rax, rbp\n")
 			fmt.Printf("    sub rax, %d\n", (v.Index+1)*MemorySize)
-		case *ArrayExpression:
-			v := g.Variables[left.Identifier]
-			fmt.Printf("    mov rax, rbp\n")
-			fmt.Printf("    sub rax, %d\n", (v.Index+left.Index+1)*MemorySize)
+		case *UnaryOperatorNode:
+			left.Accept(g)
 		default:
-			panic("no identifier")
+			debug(left)
+			panic("no identifier: ")
 		}
 		g.generatePush("rax")
 		n.Right.Accept(g)
@@ -261,7 +251,11 @@ func (g *Generator) VisitIdentifier(n *IdentifierNode) (interface{}, error) {
 	v := g.Variables[n.Value]
 	fmt.Printf("    mov rax, rbp\n")
 	fmt.Printf("    sub rax, %d\n", (v.Index+1)*MemorySize)
-	g.generatePush("[rax]")
+	if v.Type.Value == TYPE_ARRAY {
+		g.generatePush("rax")
+	} else {
+		g.generatePush("[rax]")
+	}
 	return nil, nil
 }
 
@@ -290,11 +284,11 @@ func (g *Generator) VisitCall(n *CallNode) (interface{}, error) {
 		n.Args[5].Accept(g)
 		g.generatePop("r9")
 	}
-	if g.RspCounter%2 == 0 {
+	if g.RspCounter%16 == 0 {
 		fmt.Printf("    sub rsp, 8\n")
 	}
 	fmt.Printf("    call _%s\n", n.Identifier)
-	if g.RspCounter%2 == 0 {
+	if g.RspCounter%16 == 0 {
 		fmt.Printf("    add rsp, 8\n")
 	}
 	g.generatePush("rax")
@@ -388,6 +382,12 @@ func (g *Generator) VisitBlock(n *Block) (interface{}, error) {
 func (g *Generator) VisitVariableDeclaration(n *VariableDeclaration) (interface{}, error) {
 	g.generatePush("rax") // TODO: delete
 	if n.Expression != nil {
+		//if n.Type.Value == TYPE_ARRAY {
+		//	v := g.Variables[n.Identifier]
+		//	fmt.Printf("    mov rax, rbp\n")
+		//	fmt.Printf("    sub rax, %d\n", (v.Index+1)*MemorySize)
+		//	g.generatePush("rax")
+		//}
 		v := g.Variables[n.Identifier]
 		fmt.Printf("    mov rax, rbp\n")
 		fmt.Printf("    sub rax, %d\n", (v.Index+1)*MemorySize)
@@ -404,11 +404,7 @@ func (g *Generator) VisitVariableDeclaration(n *VariableDeclaration) (interface{
 func (g *Generator) VisitUnaryOperator(n *UnaryOperatorNode) (interface{}, error) {
 	switch n.Type {
 	case '*':
-		ident := n.Expression.(*IdentifierNode)
-		v := g.Variables[ident.Value]
-		fmt.Printf("    mov rax, rbp\n")
-		fmt.Printf("    sub rax, %d\n", (v.Index+1)*MemorySize)
-		g.generatePush("[rax]")
+		n.Expression.Accept(g)
 		g.generatePop("rax")
 		g.generatePush("[rax]")
 	case '&':
@@ -421,22 +417,13 @@ func (g *Generator) VisitUnaryOperator(n *UnaryOperatorNode) (interface{}, error
 	return nil, nil
 }
 
-func (g *Generator) VisitArrayExpression(n *ArrayExpression) (interface{}, error) {
-	v := g.Variables[n.Identifier]
-	fmt.Printf("    mov rax, rbp\n")
-	fmt.Printf("    sub rax, %d\n", (v.Index+1)*MemorySize)
-	fmt.Printf("    sub rax, %d\n", n.Index*MemorySize)
-	g.generatePush("[rax]")
-	return nil, nil
-}
-
 func (g *Generator) generatePush(register string) {
-	g.RspCounter++
+	g.RspCounter += 8
 	fmt.Printf("    push %s\n", register)
 }
 
 func (g *Generator) generatePop(register string) {
-	g.RspCounter--
+	g.RspCounter -= 8
 	fmt.Printf("    pop %s\n", register)
 }
 
